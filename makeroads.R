@@ -20,10 +20,10 @@ library(maptools)
 
 ## Set the bounding box here.
 
-left <- -81.04
-right <- -81.03
-top <- 34.82
-bottom <- 34.79
+left <- -81.01
+right <- -80.97
+top <- 34.40
+bottom <- 34.20
 
 ## What angle to split tracks at (degrees) - splits merged tracks
 splitangle <- 120
@@ -35,7 +35,7 @@ similarangle <- 22.5
 maxtrackdist <- 0.025
 
 ## How close to fit
-delta <- 1/7200    ## Ensure curves are reconstructed within 1/2 deg second
+delta <- 1/1800    ## Ensure curves are reconstructed within 2 deg second
 maxit <- 50
 
 debug <- TRUE
@@ -247,7 +247,8 @@ sortTracks <- function(tracks) {
 }
 newtracks3 <- sortTracks(newtracks2)
 
-## Merge the tracks here using some criterion I haven't figured out yet
+## Identify related tracks. Tracks are related if their bearings are similar
+## and they are located close enough together.
 consolidateTracks <- function(tracks) {
   bearings <- sapply(tracks, function(x) {
     gzAzimuth(as.matrix(x[1,]), as.matrix(x[nrow(x),]))
@@ -295,6 +296,7 @@ consolidateTracks <- function(tracks) {
 }
 tracklist <- consolidateTracks(newtracks3)
 
+## Not working yet
 weighted.loess <- function(x, y, f=2/3, iter=3, delta=0.01, weights=NULL) {
   show(y)
   loess(y ~ x, span=f, iterations=iter+1, degree=1,
@@ -312,8 +314,9 @@ sdistances <- function(curve, track) {
 }
 
 fitpcurve <- function(track) {
-  bandwidth <- min(0.25, 20/nrow(track))
-  show(paste('Fitting curve with', nrow(track), 'points; bandwidth',
+  olen <- nrow(track)
+  bandwidth <- round(min(0.1, 25/olen), 3)
+  show(paste('Fitting curve with', olen, 'points; bandwidth',
              bandwidth))
   curve <- principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=maxit,
                            delta=delta, iter=2, smoother='lowess')
@@ -322,10 +325,17 @@ fitpcurve <- function(track) {
   ## Really should use weights...
   d <- sdistances(curve, track)
   track <- track[-(d >= 4),]
-  show(paste('Refitting curve with', nrow(track), 'points'))
-  
-  principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=maxit,
-                  delta=delta, iter=2, smoother='lowess')  
+  if(nrow(track) > 0 && nrow(track) < olen) {
+    show(paste('Refitting curve with', nrow(track), 'points'))
+    
+    curve <- principal.curve(as.matrix(track), ## start=curve$s[-(d>=4),],
+                             trace=T, f=bandwidth,
+                             maxit=maxit,
+                             delta=delta, iter=2, smoother='lowess')
+  } else {
+    show('Empty refit?')
+  }
+  curve
 }
 
 gpsbabel.out <- function(infile, outfile) {
@@ -353,9 +363,14 @@ for(group in tracklist) {
     color <- color+1
   }
 
+  if(nrow(mergedtracks) < 20) {
+    show(paste('Skipping small group', tcount))
+    next
+  }
+  
   ## Do the other stuff here...
   f <- fitpcurve(mergedtracks)
-  lines(f, asp=0.8, lty=3, col=2)
+  lines(f$s[f$tag,], asp=0.8, lty=3, col=2)
 
   fname <- paste('roadway-', tcount, sep='')
   csvname <- paste(fname, 'csv', sep='.')
