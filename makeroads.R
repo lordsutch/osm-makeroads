@@ -19,10 +19,11 @@ library(rgdal)
 library(maptools)
 
 ## Set the bounding box here.
-left <- -80.872
-right <- -80.84
-top <- 35.69
-bottom <- 35.58
+
+left <- -81.04
+right <- -81.03
+top <- 34.82
+bottom <- 34.79
 
 ## What angle to split tracks at (degrees) - splits merged tracks
 splitangle <- 120
@@ -165,7 +166,7 @@ splitTracks <- function(tracks) {
       dist <- dmat[r,r+1]
       ##show(dist)
       thistrack <- rbind(thistrack, r1)
-      if(nrow(thistrack) > 20 && dist > splitdistance) {
+      if(nrow(thistrack) > (nrow(track)/5) && dist > splitdistance) {
         show('Making new track')
         show(r1)
         show(r2)
@@ -191,6 +192,7 @@ splitTracks2 <- function(tracks) {
     bearings <- trackAzimuth(as.matrix(track))
     
     thistrack <- NULL
+    tracklen <- 0
     for(r in 1:(nrow(track)-1)) {
       b1 <- bearings[r]
       b2 <- bearings[r+1]
@@ -200,18 +202,23 @@ splitTracks2 <- function(tracks) {
 
       thistrack <- rbind(thistrack, track[r,])
       difference <- min((b1-avbearing) %% 360, (avbearing-b1) %% 360)
+      seglen <- geodetic.distance(track[r,], track[r+1,])
+      ##show(difference)
 
-      if(nrow(thistrack) > 100 && abs(difference) >= splitangle) {
+      if((nrow(thistrack) > (nrow(track)/5) || tracklen > splitdistance)
+         && abs(difference) >= splitangle) {
         ## Assume a big turn between segments is a break in the track
-        if(geodetic.distance(track[r,], track[r+1,]) > 0.01) {
+        if(seglen > 0.01) {
           show('** Making new track')
           show(difference)
           newtracks <- c(newtracks, list(thistrack))
           thistrack <- NULL
+          tracklen <- 0
         } else {
           show('** Ignoring small deviation')
         }
       }
+      tracklen <- tracklen + seglen
     }
     thistrack <- rbind(thistrack, track[r+1,])
     newtracks <- c(newtracks, list(thistrack))
@@ -306,6 +313,8 @@ sdistances <- function(curve, track) {
 
 fitpcurve <- function(track) {
   bandwidth <- min(0.25, 20/nrow(track))
+  show(paste('Fitting curve with', nrow(track), 'points; bandwidth',
+             bandwidth))
   curve <- principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=maxit,
                            delta=delta, iter=2, smoother='lowess')
 
@@ -313,6 +322,7 @@ fitpcurve <- function(track) {
   ## Really should use weights...
   d <- sdistances(curve, track)
   track <- track[-(d >= 4),]
+  show(paste('Refitting curve with', nrow(track), 'points'))
   
   principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=maxit,
                   delta=delta, iter=2, smoother='lowess')  
