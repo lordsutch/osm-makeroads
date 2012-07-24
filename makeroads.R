@@ -17,6 +17,7 @@
 library(princurve)
 library(rgdal)
 library(maptools)
+library(geosphere)
 
 ## Set the bounding box here.
 
@@ -26,13 +27,19 @@ top <- 34.40
 bottom <- 34.20
 
 ## What angle to split tracks at (degrees) - splits merged tracks
-splitangle <- 120
+splitangle <- 60
 
 ## How close the angles need to be for ways to be "similar"
-similarangle <- 22.5
+similarangle <- 30
 
-## Max distance similar tracks can be apart (km) somewhere
-maxtrackdist <- 0.025
+## Max distance similar tracks can be apart (m) somewhere
+maxtrackdist <- 25
+
+## Max distance a track can ever be away from the bundle to be distinct (m)
+maxseparation <- 300
+
+## Interpolate distance (m) - ensure tracks have a point this often
+interpolatedist <- 100
 
 ## How close to fit
 delta <- 1/1800    ## Ensure curves are reconstructed within 2 deg second
@@ -40,21 +47,11 @@ maxit <- 50
 
 debug <- TRUE
 
-## Return distance in km
-geodetic.distance <- function(point1, point2) {
-  R <- 6371
-  p1rad <- point1 * pi/180
-  p2rad <- point2 * pi/180
-  d <- sin(p1rad[2])*sin(p2rad[2])+cos(p1rad[2])*cos(p2rad[2])*cos(abs(p1rad[1]-p2rad[1]))
-  d <- acos(d)
-  as.double(R*d)
-}
-
 ## How much distance to split tracks by (km)
 ## This deals with points w/o track info.
 ## We'll say 25% of the diagonal distance is reasonable(?),
-## with a minimum threshold of 1 km
-splitdistance <- max(geodetic.distance(c(top, left), c(bottom, right))*.25, 1)
+## with a minimum threshold of 1 km (1000m)
+splitdistance <- max(distHaversine(c(top, left), c(bottom, right))*.25, 1000)
 
 ## Turn SpatialLines stuff into coordinate tracks
 
@@ -166,7 +163,7 @@ splitTracks <- function(tracks) {
       dist <- dmat[r,r+1]
       ##show(dist)
       thistrack <- rbind(thistrack, r1)
-      if(nrow(thistrack) > (nrow(track)/5) && dist > splitdistance) {
+      if(nrow(thistrack) > (nrow(track)/10) && dist > splitdistance) {
         show('Making new track')
         show(r1)
         show(r2)
@@ -191,24 +188,24 @@ splitTracks2 <- function(tracks) {
   for(track in tracks) {
     bearings <- trackAzimuth(as.matrix(track))
     
-    thistrack <- NULL
-    tracklen <- 0
-    for(r in 1:(nrow(track)-1)) {
+    thistrack <- track[1,]
+    tracklen <- 1
+    for(r in 2:(nrow(track)-2)) {
       b1 <- bearings[r]
       b2 <- bearings[r+1]
-      ##b3 <- bearings[r+2]      
-      avbearing <- gzAzimuth(as.matrix(track[1,]),
+      #b3 <- bearings[r+2]      
+      avbearing <- gzAzimuth(as.matrix(track[max(1,r-20),]),
                              as.matrix(track[r,]))
 
       thistrack <- rbind(thistrack, track[r,])
-      difference <- min((b1-avbearing) %% 360, (avbearing-b1) %% 360)
-      seglen <- geodetic.distance(track[r,], track[r+1,])
-      ##show(difference)
-
-      if((nrow(thistrack) > (nrow(track)/5) || tracklen > splitdistance)
-         && abs(difference) >= splitangle) {
+      difference <- min(min((b1-avbearing) %% 360, (avbearing-b1) %% 360),
+                        min((b2-avbearing) %% 360, (avbearing-b2) %% 360))
+      seglen <- distHaversine(track[r,], track[r+1,])
+      
+      if(nrow(thistrack) > 5 && abs(difference) >= splitangle) {
         ## Assume a big turn between segments is a break in the track
-        if(seglen > 0.01) {
+        ## If points within 10m, ignore (probably stationary GPS error)
+        if(seglen > 10) {
           show('** Making new track')
           show(difference)
           newtracks <- c(newtracks, list(thistrack))
@@ -220,7 +217,7 @@ splitTracks2 <- function(tracks) {
       }
       tracklen <- tracklen + seglen
     }
-    thistrack <- rbind(thistrack, track[r+1,])
+    thistrack <- rbind(thistrack, track[r+1,], track[r+2,])
     newtracks <- c(newtracks, list(thistrack))
   }
 
@@ -229,21 +226,34 @@ splitTracks2 <- function(tracks) {
 newtracks2 <- splitTracks2(newtracks)
 length(newtracks2)
 
-## Sort the tracks by length
+## Sort the tracks by length and interpolate as needed
 sortTracks <- function(tracks) {
   lengths <- NULL
+  newtracks <- list()
   for(track in tracks) {
+    newtrack <- NULL
     len <- 0
     for(r in 1:(nrow(track)-1)) {
-      len <- len + geodetic.distance(as.matrix(track[r,]),
-                                     as.matrix(track[r+1,]))
+      seglen <- distHaversine(as.matrix(track[r,]), as.matrix(track[r+1,]))
+      len <- len + seglen
+      newtrack <- rbind(newtrack, track[r,])
+      if(seglen > interpolatedist) {
+        points <- round(seglen/interpolatedist)+1
+        ##show(paste(r, 'interpolating', points))
+        newpoints <- gcIntermediate(as.matrix(track[r,]),
+                                    as.matrix(track[r+1,]), points)
+        newpoints <- data.frame(x=newpoints[,1], y=newpoints[,2])
+        newtrack <- rbind(newtrack, newpoints)
+      }
     }
+    newtrack <- rbind(newtrack, track[nrow(track),])
     lengths <- c(lengths, len)
+    newtracks <- c(newtracks, list(newtrack))
     ##show(lengths)
   }
   x <- sort(lengths, index.return=T, decreasing=T)
   ##show(x$ix)
-  tracks[x$ix]
+  newtracks[x$ix]
 }
 newtracks3 <- sortTracks(newtracks2)
 
@@ -257,44 +267,71 @@ consolidateTracks <- function(tracks) {
   tracklist <- list()
   tracklist[[1]] <- c(1)
   for(t in 2:length(tracks)) {
-    found <- FALSE
-    show(t)
-    for(v in 1:length(tracklist)) {
-      closeenough <- FALSE
-      for(st in 1:length(tracklist[[v]])) {
-        comparetrack <- tracklist[[v]][st]
-        bdiff <- abs(bearings[t] - bearings[comparetrack])
-        if(bdiff > 180) bdiff <- 360-bdiff
-        if(bdiff < similarangle) closeenough <- TRUE
-      }
-      if(closeenough) {
+    for(angle in c(0, 180)) {
+      ## Try 180-degrees off as a last resort
+      found <- FALSE
+      for(v in 1:length(tracklist)) {
         closeenough <- FALSE
-        show(tracklist[[v]])
-        for(ctrack in tracklist[[v]]) {
-          tinfo <- as.matrix(tracks[[ctrack]])
-          show(ctrack)
-          for(r in 1:nrow(tracks[[t]])) {
-            dist <- spDistsN1(tinfo, as.matrix(tracks[[t]][r,]), longlat=TRUE)
-            show(min(dist))
-            if(min(dist) < maxtrackdist) {
-              closeenough <- TRUE
-              break
-            }
-          }
-          if(closeenough) break
+        for(st in 1:length(tracklist[[v]])) {
+          comparetrack <- tracklist[[v]][st]
+          bdiff <- abs(bearings[t] - bearings[comparetrack])
+          bdiff <- (bdiff+angle) %% 360
+          if(bdiff > 180) bdiff <- 360-bdiff
+          show(bdiff)
+          if(bdiff <= similarangle) closeenough <- TRUE
         }
         if(closeenough) {
-          tracklist[[v]] <- c(tracklist[[v]], t)
-          found <- TRUE
-          break
+          show(paste('Testing', t, 'against group', v))
+          closeenough <- FALSE
+          show(tracklist[[v]])
+          tinfo <- NULL
+          for(ctrack in tracklist[[v]]) {
+            dists <- 0
+            tinfo <- as.matrix(tracks[[ctrack]])
+            d <- dist2Line(as.matrix(tracks[[t]]), tinfo)
+            dist <- d[,1]
+            if(min(dist) < maxtrackdist) {
+              show(paste(t, 'is within',min(dist),'of',v))
+              if(max(dist) > maxseparation) {
+                show(paste(t, 'too far away', max(dist),'from track', ctrack))
+                closeenough <- FALSE
+                break
+              } else {
+                closeenough <- TRUE
+              }
+            }
+          }
+          if(closeenough) {
+            tracklist[[v]] <- c(tracklist[[v]], t)
+            found <- TRUE
+            break
+          }
         }
+        if(found) break;
       }
+      if(found) break;
     }
     if(!found) tracklist[[length(tracklist)+1]] <- c(t)
   }
   tracklist
 }
 tracklist <- consolidateTracks(newtracks3)
+
+save(tracks, newtracks, newtracks2, newtracks3, tracklist,
+     file='testing.Rdata')
+
+load('testing.Rdata')
+
+showtracks <- function(tracks, basetrack, others) {
+  plot(tracks[[basetrack]], xlim=c(left, right), ylim=c(bottom, top),
+       asp=0.75, type='l', col='gray50')
+  color <- 3
+  for(t in others) {
+    lines(tracks[[t]], pch='.', col=color, lwd=0.2)
+    text(tracks[[t]][1,], labels=t, col=color)
+    color <- color+1
+  }
+}
 
 ## Not working yet
 weighted.loess <- function(x, y, f=2/3, iter=3, delta=0.01, weights=NULL) {
@@ -304,22 +341,21 @@ weighted.loess <- function(x, y, f=2/3, iter=3, delta=0.01, weights=NULL) {
 }
 
 sdistances <- function(curve, track) {
-  dvec <- vector()
-  for(p in 1:nrow(track)) {
-    dvec <- c(dvec, geodetic.distance(curve$s[p,], track[p,]))
+  dvec <- NULL
+  for(r in 1:nrow(track)) {
+    dvec <- c(dvec, distHaversine(track[r,], curve$s[r,]))
   }
-  ##dvec
   sdists <- dvec/sd(dvec)
   sdists
 }
 
 fitpcurve <- function(track) {
   olen <- nrow(track)
-  bandwidth <- round(min(0.1, 25/olen), 3)
+  bandwidth <- round(min(0.1, 40/olen), 3)
   show(paste('Fitting curve with', olen, 'points; bandwidth',
              bandwidth))
   curve <- principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=maxit,
-                           delta=delta, iter=2, smoother='lowess')
+                           delta=delta, iter=0, smoother='lowess')
 
   ## Screen out outliers and reestimate curve
   ## Really should use weights...
@@ -331,7 +367,7 @@ fitpcurve <- function(track) {
     curve <- principal.curve(as.matrix(track), ## start=curve$s[-(d>=4),],
                              trace=T, f=bandwidth,
                              maxit=maxit,
-                             delta=delta, iter=2, smoother='lowess')
+                             delta=delta, iter=0, smoother='lowess')
   } else {
     show('Empty refit?')
   }
@@ -363,7 +399,7 @@ for(group in tracklist) {
     color <- color+1
   }
 
-  if(nrow(mergedtracks) < 20) {
+  if(nrow(mergedtracks) < 50) {
     show(paste('Skipping small group', tcount))
     next
   }
