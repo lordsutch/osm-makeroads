@@ -188,6 +188,10 @@ splitTracks2 <- function(tracks) {
   newtracks <- list()
 
   for(track in tracks) {
+    ## Skip degenerate tracks
+    if(nrow(track) < 2)
+      next
+      
     bearings <- trackAzimuth(as.matrix(track))
     
     thistrack <- track[1,]
