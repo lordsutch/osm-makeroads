@@ -170,12 +170,14 @@ splitTracks <- function(tracks) {
         show(r1)
         show(r2)
         show(seglen)
-        newtracks <- c(newtracks, list(thistrack))
+        if(nrow(thistrack) >= 2)
+          newtracks <- c(newtracks, list(thistrack))
         thistrack <- NULL
       }
     }
     thistrack <- rbind(thistrack, r2)
-    newtracks <- c(newtracks, list(thistrack))
+    if(nrow(thistrack) >= 2)
+      newtracks <- c(newtracks, list(thistrack))
   }
 
   newtracks
