@@ -21,10 +21,10 @@ library(geosphere)
 
 ## Set the bounding box here.
 
-left <- -81.01
-right <- -80.97
-top <- 34.40
-bottom <- 34.20
+left <- -85.60
+right <- -85.55
+top <- 40.22
+bottom <- 40.07
 
 ## What angle to split tracks at (degrees) - splits merged tracks
 splitangle <- 60
@@ -33,12 +33,16 @@ splitangle <- 60
 similarangle <- 30
 
 ## Max distance similar tracks can be apart (m) somewhere
-maxtrackdist <- 25
+## Realistically the same road usually gets within 1 meter at least once...
+maxtrackdist <- 10
 
 ## Max distance a track can ever be away from the bundle to be distinct (m)
-maxseparation <- 300
+maxseparation <- 100
 
 ## Interpolate distance (m) - ensure tracks have a point this often
+## This copes with the "outlier points drag the track" issue with thinned GPX
+## traces.  Downside: dist2Line gets a lot slower.
+interpolate <- TRUE
 interpolatedist <- 100
 
 ## How close to fit
@@ -48,7 +52,9 @@ maxit <- 50
 debug <- TRUE
 
 ## How much distance to split tracks by (km)
-## This deals with points w/o track info.
+## This deals with points w/o track info that tend to wrap around
+## at the edge of the downloaded area.
+
 ## We'll say 25% of the diagonal distance is reasonable(?),
 ## with a minimum threshold of 1 km (1000m)
 splitdistance <- max(distHaversine(c(top, left), c(bottom, right))*.25, 1000)
@@ -59,22 +65,16 @@ splitdistance <- max(distHaversine(c(top, left), c(bottom, right))*.25, 1000)
 ## file directly?
 
 fixupLines <- function(SpLinesOb) {
-  res <- sapply(SpLinesOb@lines, function(z) { lapply(z@Lines, coordinates) })
-
-  res <- lapply(res, function(z) {
-    if(is.matrix(z))
-      z
-    else if(length(z) > 1) # Points without track
-      matrix(c(z, recursive=TRUE), ncol=2, byrow=T)
-    else # Complete track
-      matrix(c(z, recursive=TRUE), ncol=2, byrow=F)
-  })
-
-  res <- lapply(res, function(z) {
-    z <- as.data.frame(z)
-    colnames(z) <- c('x', 'y')
-    z
-  })
+  tracks <- list()
+  
+  for(linesOb in SpLinesOb@lines) {
+    for(lineOb in linesOb@Lines) {
+      coords <- coordinates(lineOb)
+      coords <- data.frame(lon=coords[,1], lat=coords[,2])
+      tracks <- c(tracks, list(coords))
+    }
+  }
+  tracks
 }
 
 parseGPXfile <- function(filename) {
@@ -141,7 +141,7 @@ tracks <- getOSMtracks(left, bottom, right, top)
 
 ## Debugging
 ##tracks <- getOSMtracksFiles(list.files(pattern='file.*[.]gpx'))
-##tracks <- getOSMtracksFiles(list.files(pattern='I77.*[.]gpx'))
+tracks <- getOSMtracksFiles(list.files(pattern='I69.*[.]gpx'))
 length(tracks)
 
 ## Split tracks by distance threshold
@@ -150,7 +150,9 @@ splitTracks <- function(tracks) {
 
   for(track in tracks) {
     track <- track[!duplicated(track),]
-    dmat <- spDists(as.matrix(track), longlat=TRUE)
+
+    # Convert to same scale as geosphere stuff. Grr.
+    dmat <- spDists(as.matrix(track), longlat=TRUE)*1000
 
     thistrack <- NULL
     sofar <- 0
@@ -160,14 +162,14 @@ splitTracks <- function(tracks) {
       r2 <- track[r+1,]
       ##show(r1)
       ##show(r2)
-      dist <- dmat[r,r+1]
       ##show(dist)
+      seglen <- dmat[r,r+1]
       thistrack <- rbind(thistrack, r1)
-      if(nrow(thistrack) > (nrow(track)/10) && dist > splitdistance) {
+      if(seglen > splitdistance) {
         show('Making new track')
         show(r1)
         show(r2)
-        show(dist)
+        show(seglen)
         newtracks <- c(newtracks, list(thistrack))
         thistrack <- NULL
       }
@@ -226,34 +228,21 @@ splitTracks2 <- function(tracks) {
 newtracks2 <- splitTracks2(newtracks)
 length(newtracks2)
 
-## Sort the tracks by length and interpolate as needed
+## Sort the tracks by length
 sortTracks <- function(tracks) {
   lengths <- NULL
-  newtracks <- list()
   for(track in tracks) {
-    newtrack <- NULL
     len <- 0
     for(r in 1:(nrow(track)-1)) {
       seglen <- distHaversine(as.matrix(track[r,]), as.matrix(track[r+1,]))
       len <- len + seglen
-      newtrack <- rbind(newtrack, track[r,])
-      if(seglen > interpolatedist) {
-        points <- round(seglen/interpolatedist)+1
-        ##show(paste(r, 'interpolating', points))
-        newpoints <- gcIntermediate(as.matrix(track[r,]),
-                                    as.matrix(track[r+1,]), points)
-        newpoints <- data.frame(x=newpoints[,1], y=newpoints[,2])
-        newtrack <- rbind(newtrack, newpoints)
-      }
     }
-    newtrack <- rbind(newtrack, track[nrow(track),])
     lengths <- c(lengths, len)
-    newtracks <- c(newtracks, list(newtrack))
     ##show(lengths)
   }
   x <- sort(lengths, index.return=T, decreasing=T)
   ##show(x$ix)
-  newtracks[x$ix]
+  tracks[x$ix]
 }
 newtracks3 <- sortTracks(newtracks2)
 
@@ -317,10 +306,45 @@ consolidateTracks <- function(tracks) {
 }
 tracklist <- consolidateTracks(newtracks3)
 
-save(tracks, newtracks, newtracks2, newtracks3, tracklist,
-     file='testing.Rdata')
+interpolateTracks <- function(tracks) {
+  if(!interpolate) {
+    tracks
+  } else {
+    newtracks <- list()
+    tnum <- 0
+    for(track in tracks) {
+      newtrack <- NULL
+      tnum <- tnum+1
+      len <- 0
+      for(r in 1:(nrow(track)-1)) {
+        seglen <- distHaversine(as.matrix(track[r,]), as.matrix(track[r+1,]))
+        if(seglen > 1000) {
+          show(tnum)
+          show(seglen)
+        }
+        len <- len + seglen
+        newtrack <- rbind(newtrack, track[r,])
+        if(seglen > interpolatedist) {
+          points <- round(seglen/interpolatedist)+1
+          show(paste(tnum, r, 'interpolating', points))
+          newpoints <- gcIntermediate(as.matrix(track[r,]),
+                                      as.matrix(track[r+1,]), points)
+          newpoints <- data.frame(lon=newpoints[,1], lat=newpoints[,2])
+          newtrack <- rbind(newtrack, newpoints)
+        }
+      }
+      newtrack <- rbind(newtrack, track[nrow(track),])
+      newtracks <- c(newtracks, list(newtrack))
+    }
+  }
+  newtracks
+}
+newtracks4 <- interpolateTracks(newtracks3)
 
-load('testing.Rdata')
+save(tracks, newtracks, newtracks2, newtracks3, newtracks4, tracklist,
+     file='I69-SR67.Rdata')
+
+##load('testing.Rdata')
 
 showtracks <- function(tracks, basetrack, others) {
   plot(tracks[[basetrack]], xlim=c(left, right), ylim=c(bottom, top),
@@ -389,13 +413,13 @@ pdf(onefile=T, height=8, width=6)
 for(group in tracklist) {
   tcount <- tcount + 1
   mergedtracks <- NULL
-  plot(newtracks3[[1]], xlim=c(left, right), ylim=c(bottom, top), asp=0.75,
+  plot(newtracks4[[1]], xlim=c(left, right), ylim=c(bottom, top), asp=0.75,
        type='l', col='gray50')
   color <- 3
   for(t in group) {
-    mergedtracks <- rbind(mergedtracks, newtracks3[[t]])
-    lines(newtracks3[[t]], pch='.', col=color, lwd=0.2)
-    text(newtracks3[[t]][1,], labels=t, col=color)
+    mergedtracks <- rbind(mergedtracks, newtracks4[[t]])
+    lines(newtracks4[[t]], pch='.', col=color, lwd=0.2)
+    text(newtracks4[[t]][1,], labels=t, col=color)
     color <- color+1
   }
 
