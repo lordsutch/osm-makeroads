@@ -21,10 +21,10 @@ library(geosphere)
 
 ## Set the bounding box here.
 
-left <- -85.60
-right <- -85.55
-top <- 40.22
-bottom <- 40.07
+left <- -86.13
+right <- -85.90
+top <- 34.20
+bottom <- 34.00
 
 ## What angle to split tracks at (degrees) - splits merged tracks
 splitangle <- 60
@@ -38,6 +38,12 @@ maxtrackdist <- 10
 
 ## Max distance a track can ever be away from the bundle to be distinct (m)
 maxseparation <- 100
+
+## How much an opposite-angle track can be off before we reject it
+## should be much smaller than above, since we need to account for medians
+## in North America, 15m (45 ft) is reasonable; if your country typically has
+## narrow medians, needs to be smaller.
+maxoppositeseparation <- 15
 
 ## Interpolate distance (m) - ensure tracks have a point this often
 ## This copes with the "outlier points drag the track" issue with thinned GPX
@@ -141,7 +147,7 @@ tracks <- getOSMtracks(left, bottom, right, top)
 
 ## Debugging
 ##tracks <- getOSMtracksFiles(list.files(pattern='file.*[.]gpx'))
-tracks <- getOSMtracksFiles(list.files(pattern='I69.*[.]gpx'))
+##tracks <- getOSMtracksFiles(list.files(pattern='I69.*[.]gpx'))
 length(tracks)
 
 ## Split tracks by distance threshold
@@ -265,6 +271,11 @@ consolidateTracks <- function(tracks) {
     for(angle in c(0, 180)) {
       ## Try 180-degrees off as a last resort
       found <- FALSE
+      if(angle == 180)
+        separation <- maxoppositeseparation
+      else
+        separation <- maxseparation
+        
       for(v in 1:length(tracklist)) {
         closeenough <- FALSE
         for(st in 1:length(tracklist[[v]])) {
@@ -287,7 +298,7 @@ consolidateTracks <- function(tracks) {
             dist <- d[,1]
             if(min(dist) < maxtrackdist) {
               show(paste(t, 'is within',min(dist),'of',v))
-              if(max(dist) > maxseparation) {
+              if(max(dist) > separation) {
                 show(paste(t, 'too far away', max(dist),'from track', ctrack))
                 closeenough <- FALSE
                 break
@@ -348,7 +359,7 @@ interpolateTracks <- function(tracks) {
 newtracks4 <- interpolateTracks(newtracks3)
 
 save(tracks, newtracks, newtracks2, newtracks3, newtracks4, tracklist,
-     file='I69-SR67.Rdata')
+     file='I59.Rdata')
 
 ##load('testing.Rdata')
 
