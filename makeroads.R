@@ -19,52 +19,6 @@ library(rgdal)
 library(maptools)
 library(geosphere)
 
-## Set the bounding box here.
-
-left <- -86.13
-right <- -85.90
-top <- 34.20
-bottom <- 34.00
-
-## What angle to split tracks at (degrees) - splits merged tracks
-splitangle <- 60
-
-## How close the angles need to be for ways to be "similar"
-similarangle <- 30
-
-## Max distance similar tracks can be apart (m) somewhere
-## Realistically the same road usually gets within 1 meter at least once...
-maxtrackdist <- 10
-
-## Max distance a track can ever be away from the bundle to be distinct (m)
-maxseparation <- 100
-
-## How much an opposite-angle track can be off before we reject it
-## should be much smaller than above, since we need to account for medians
-## in North America, 15m (45 ft) is reasonable; if your country typically has
-## narrow medians, needs to be smaller.
-maxoppositeseparation <- 15
-
-## Interpolate distance (m) - ensure tracks have a point this often
-## This copes with the "outlier points drag the track" issue with thinned GPX
-## traces.  Downside: dist2Line gets a lot slower.
-interpolate <- TRUE
-interpolatedist <- 100
-
-## How close to fit
-delta <- 1/1800    ## Ensure curves are reconstructed within 2 deg second
-maxit <- 50
-
-debug <- TRUE
-
-## How much distance to split tracks by (km)
-## This deals with points w/o track info that tend to wrap around
-## at the edge of the downloaded area.
-
-## We'll say 25% of the diagonal distance is reasonable(?),
-## with a minimum threshold of 1 km (1000m)
-splitdistance <- max(distHaversine(c(top, left), c(bottom, right))*.25, 1000)
-
 ## Turn SpatialLines stuff into coordinate tracks
 
 ## There's probably an easier way to do this... maybe just parse the GPX
@@ -142,14 +96,6 @@ getOSMtracksFiles <- function(filenames) {
   tracks
 }
 
-## Get GPS points in the area described by this bounding box
-tracks <- getOSMtracks(left, bottom, right, top)
-
-## Debugging
-##tracks <- getOSMtracksFiles(list.files(pattern='file.*[.]gpx'))
-##tracks <- getOSMtracksFiles(list.files(pattern='I69.*[.]gpx'))
-length(tracks)
-
 ## Split tracks by distance threshold
 splitTracks <- function(tracks) {
   newtracks <- list()
@@ -188,8 +134,6 @@ splitTracks <- function(tracks) {
 
   newtracks
 }
-newtracks <- splitTracks(tracks)
-length(newtracks)
 
 ## Split tracks by direction threshold
 splitTracks2 <- function(tracks) {
@@ -237,8 +181,6 @@ splitTracks2 <- function(tracks) {
 
   newtracks
 }
-newtracks2 <- splitTracks2(newtracks)
-length(newtracks2)
 
 ## Sort the tracks by length
 sortTracks <- function(tracks) {
@@ -256,7 +198,6 @@ sortTracks <- function(tracks) {
   ##show(x$ix)
   tracks[x$ix]
 }
-newtracks3 <- sortTracks(newtracks2)
 
 ## Identify related tracks. Tracks are related if their bearings are similar
 ## and they are located close enough together.
@@ -321,7 +262,6 @@ consolidateTracks <- function(tracks) {
   }
   tracklist
 }
-tracklist <- consolidateTracks(newtracks3)
 
 interpolateTracks <- function(tracks) {
   if(!interpolate) {
@@ -356,12 +296,6 @@ interpolateTracks <- function(tracks) {
   }
   newtracks
 }
-newtracks4 <- interpolateTracks(newtracks3)
-
-save(tracks, newtracks, newtracks2, newtracks3, newtracks4, tracklist,
-     file='I59.Rdata')
-
-##load('testing.Rdata')
 
 showtracks <- function(tracks, basetrack, others) {
   plot(tracks[[basetrack]], xlim=c(left, right), ylim=c(bottom, top),
@@ -392,7 +326,7 @@ sdistances <- function(curve, track) {
 
 fitpcurve <- function(track) {
   olen <- nrow(track)
-  bandwidth <- round(min(0.1, 40/olen), 3)
+  bandwidth <- round(min(0.1, 25/olen), 3)
   show(paste('Fitting curve with', olen, 'points; bandwidth',
              bandwidth))
   curve <- principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=maxit,
@@ -424,38 +358,3 @@ gpsbabel.out <- function(infile, outfile) {
                         '-x', 'interpolate,distance=0.25k',
                         '-o', 'gpx', '-F', outfile))
 }
-
-tcount <- 0
-pdf(onefile=T, height=8, width=6)
-for(group in tracklist) {
-  tcount <- tcount + 1
-  mergedtracks <- NULL
-  plot(newtracks4[[1]], xlim=c(left, right), ylim=c(bottom, top), asp=0.75,
-       type='l', col='gray50')
-  color <- 3
-  for(t in group) {
-    mergedtracks <- rbind(mergedtracks, newtracks4[[t]])
-    lines(newtracks4[[t]], pch='.', col=color, lwd=0.2)
-    text(newtracks4[[t]][1,], labels=t, col=color)
-    color <- color+1
-  }
-
-  if(nrow(mergedtracks) < 50) {
-    show(paste('Skipping small group', tcount))
-    next
-  }
-  
-  ## Do the other stuff here...
-  f <- fitpcurve(mergedtracks)
-  lines(f$s[f$tag,], asp=0.8, lty=3, col=2)
-
-  fname <- paste('roadway-', tcount, sep='')
-  csvname <- paste(fname, 'csv', sep='.')
-  gpxname <- paste(fname, 'gpx', sep='.')
-  ## Export the curve as a CSV file
-  write.csv(f$s[f$tag,], file=csvname)
-
-  ## Then run GPSBabel to convert the CSV to GPX
-  gpsbabel.out(csvname, gpxname)
-}
-dev.off()
