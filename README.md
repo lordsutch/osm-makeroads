@@ -16,7 +16,9 @@ apt-get install r-cran-maptools gpsbabel libgdal-dev
 
 R -e "install.packages('princurve', 'rgdal', 'geosphere')"
 
-makeroads.R is lightly commented.  You'll get a bunch of GPX files
-named 'roadway-*.gpx', one per identified track, along with Rplots.pdf
+makeroads.R and process.R are lightly commented.
+
+If you source process.R, you'll get a bunch of GPX files named
+'roadway-*.gpx', one per identified track, along with Rplots.pdf
 containing a visual representation of each estimated track along with
 the tracks that were used to construct it.
