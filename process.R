@@ -17,29 +17,29 @@
 source('makeroads.R')
 
 ## Set the bounding box here.
-left <- -81.91
-right <- -81.86
-top <- 34.50
-bottom <- 34.61
+left <- -77.33
+right <- -77.29
+bottom <- 31.19
+top <- 31.22
 
 ## What angle to split tracks at (degrees) - splits merged tracks
-splitangle <- 60
+splitangle <- 85
 
 ## How close the angles need to be for ways to be "similar"
-similarangle <- 30
+similarangle <- 15
 
 ## Max distance similar tracks can be apart (m) somewhere
 ## Realistically the same road usually gets within 1 meter at least once...
 maxtrackdist <- 10
 
 ## Max distance a track can ever be away from the bundle to be distinct (m)
-maxseparation <- 100
+maxseparation <- 90
 
 ## How much an opposite-angle track can be off before we reject it
 ## should be much smaller than above, since we need to account for medians
-## in North America, 15m (45 ft) is reasonable; if your country typically has
+## in North America, 20m (60 ft) is reasonable; if your country typically has
 ## narrow medians, needs to be smaller.
-maxoppositeseparation <- 15
+maxoppositeseparation <- 20
 
 ## Interpolate distance (m) - ensure tracks have a point this often
 ## This copes with the "outlier points drag the track" issue with thinned GPX
@@ -53,13 +53,9 @@ maxit <- 50
 
 debug <- TRUE
 
-## How much distance to split tracks by (km)
-## This deals with points w/o track info that tend to wrap around
-## at the edge of the downloaded area.
-
-## We'll say 25% of the diagonal distance is reasonable(?),
-## with a minimum threshold of 1 km (1000m)
-splitdistance <- max(distHaversine(c(top, left), c(bottom, right))*.25, 1000)
+## If points are more than 400m apart, split the line
+## Deals with overly-thinned traces/waypoint uploads
+splitdistance <- 400
 
 ## Get GPS points in the area described by this bounding box
 tracks <- getOSMtracks(left, bottom, right, top)
@@ -80,15 +76,20 @@ length(newtracks2)
 ## Sort tracks by length
 newtracks3 <- sortTracks(newtracks2)
 
+## Simplify tracks - imporves consolidateTracks performance immensely
+newtracks4 <- simplifyTracks(newtracks3)
+
 ## Find related tracks
-tracklist <- consolidateTracks(newtracks3)
+tracklist <- consolidateTracks(newtracks4)
 
 ## Interpolate extra points to improve fit algorithm performance
 newtracks4 <- interpolateTracks(newtracks3)
 
 ## Save the data for any future runs(?)
 save(tracks, newtracks, newtracks2, newtracks3, newtracks4, tracklist,
-     file='I26.Rdata')
+     file='I75-north.Rdata')
+
+##load("I75-north.Rdata")
 
 ## Make the best fit tracks and save them as GPX files.
 tcount <- 0
@@ -118,8 +119,11 @@ for(group in tracklist) {
   fname <- paste('roadway-', tcount, sep='')
   csvname <- tempfile(fileext='.csv')
   gpxname <- paste(fname, 'gpx', sep='.')
-  ## Export the curve as a series of points in a CSV file
-  write.csv(f$s[f$tag,], file=csvname)
+
+  points <- f$s[f$tag,]
+  ## Export the curve as a series of points in a CSV file, dropping
+  ## excess precision; OSM stores 6 decimal places
+  write.csv(round(points, 6), file=csvname)
 
   ## Then run GPSBabel to convert the CSV to GPX
   ## Could probably do this with an R package but this is simple enough for now

@@ -55,7 +55,7 @@ fetchGPXpage <- function(left, bottom, right, top, page=0) {
 
   filename1 <- tempfile(fileext='.gpx')
   print(filename1)
-  download.file(pageurl, filename1)
+  download.file(pageurl, filename1, cacheOK=FALSE)
 
   converted <- parseGPXfile(filename1)
   
@@ -66,6 +66,17 @@ fetchGPXpage <- function(left, bottom, right, top, page=0) {
 getOSMtracks <- function(left, bottom, right, top) {
   page <- 0
   tracks <- c()
+  if(right < left) {
+    temp <- right
+    right <- left
+    left <- temp
+  }
+  if(top < bottom) {
+    temp <- top
+    top <- bottom
+    bottom <- temp
+  }
+  
   repeat {
     converted <- fetchGPXpage(left, bottom, right, top, page)
 
@@ -122,14 +133,15 @@ splitTracks <- function(tracks) {
         show(r1)
         show(r2)
         show(seglen)
-        if(nrow(thistrack) >= 2)
-          newtracks <- c(newtracks, list(thistrack))
+        newtracks <- c(newtracks, list(thistrack))
         thistrack <- NULL
+        sofar <- 0
+      } else {
+        sofar <- sofar + seglen
       }
     }
     thistrack <- rbind(thistrack, r2)
-    if(nrow(thistrack) >= 2)
-      newtracks <- c(newtracks, list(thistrack))
+    newtracks <- c(newtracks, list(thistrack))
   }
 
   newtracks
@@ -140,42 +152,50 @@ splitTracks2 <- function(tracks) {
   newtracks <- list()
 
   for(track in tracks) {
-    ## Skip degenerate tracks
-    if(nrow(track) < 2)
+    ignorecount <- 0
+    
+    if(nrow(track) <= 2) {
+      newtracks <- c(newtracks, list(track))
       next
-      
-    bearings <- trackAzimuth(as.matrix(track))
+    }
+    
+    ##bearings <- trackAzimuth(as.matrix(track))
     
     thistrack <- track[1,]
-    tracklen <- 1
-    for(r in 2:(nrow(track)-2)) {
-      b1 <- bearings[r]
-      b2 <- bearings[r+1]
-      #b3 <- bearings[r+2]      
-      avbearing <- gzAzimuth(as.matrix(track[max(1,r-20),]),
-                             as.matrix(track[r,]))
-
+    tracklen <- 0
+    for(r in 2:(nrow(track)-1)) {
       thistrack <- rbind(thistrack, track[r,])
-      difference <- min(min((b1-avbearing) %% 360, (avbearing-b1) %% 360),
-                        min((b2-avbearing) %% 360, (avbearing-b2) %% 360))
+
+      spos = max(nrow(thistrack)-2, 1)
+      
+      avbearing <- gzAzimuth(as.matrix(thistrack[spos,]),
+                             as.matrix(track[r,]))
+      avbearing2 <- gzAzimuth(as.matrix(thistrack[1,]),
+                              as.matrix(track[r,]))
+      
+      difference <- min((avbearing2-avbearing) %% 360,
+                        (avbearing-avbearing2) %% 360)
+
       seglen <- distHaversine(track[r,], track[r+1,])
       
-      if(nrow(thistrack) > 5 && abs(difference) >= splitangle) {
+      if(nrow(thistrack) > 1 && abs(difference) >= splitangle) {
         ## Assume a big turn between segments is a break in the track
-        ## If points within 10m, ignore (probably stationary GPS error)
-        if(seglen > 10) {
+        ## If points within 25m, ignore (probably stationary GPS error)
+        show(difference)
+        if(seglen > 25 || ignorecount > 5 || tracklen > 1000) {
           show('** Making new track')
-          show(difference)
           newtracks <- c(newtracks, list(thistrack))
-          thistrack <- NULL
+          thistrack <- track[r,]
           tracklen <- 0
+          ignorecount <- 0
         } else {
-          show('** Ignoring small deviation')
+          ##show('** Ignoring small deviation')
+          ignorecount <- ignorecount+1
         }
       }
       tracklen <- tracklen + seglen
     }
-    thistrack <- rbind(thistrack, track[r+1,], track[r+2,])
+    thistrack <- rbind(thistrack, track[r+1,])
     newtracks <- c(newtracks, list(thistrack))
   }
 
@@ -184,26 +204,59 @@ splitTracks2 <- function(tracks) {
 
 ## Sort the tracks by length
 sortTracks <- function(tracks) {
-  lengths <- NULL
-  for(track in tracks) {
+  tcount <- length(tracks)
+  lengths <- numeric(tcount)
+  for(i in seq(tcount)) {
+    track <- tracks[[i]]
     len <- 0
-    for(r in 1:(nrow(track)-1)) {
-      seglen <- distHaversine(as.matrix(track[r,]), as.matrix(track[r+1,]))
-      len <- len + seglen
+    if(nrow(track) >= 2) {
+      for(r in 1:(nrow(track)-1)) {
+        seglen <- distHaversine(as.matrix(track[r,]), as.matrix(track[r+1,]))
+        len <- len + seglen
+      }
     }
-    lengths <- c(lengths, len)
-    ##show(lengths)
+    lengths[i] <- len ## *log(nrow(track))
   }
   x <- sort(lengths, index.return=T, decreasing=T)
   ##show(x$ix)
   tracks[x$ix]
 }
 
+simplifyTracks <- function(tracks) {
+  newtracks <- NULL
+  for(track in tracks) {
+    if(nrow(track) >= 3) {
+      infile <- tempfile(fileext='.csv')
+      outfile <- tempfile(fileext='.csv')
+      
+      write.csv(round(track, 6), file=infile)
+
+      system2('gpsbabel', c('-t', '-i', 'unicsv', '-f', infile,
+                            ## Remove nearby points that don't contribute much
+                            ## ~4m is the width of a lane
+                            '-x', 'simplify,error=0.001k',
+                            '-o', 'unicsv', '-F', outfile))
+
+      track <- read.csv(outfile)
+      track <- data.frame(lon=track$Longitude, lat=track$Latitude)
+      newtracks <- c(newtracks, list(track))
+      unlink(infile)
+      unlink(outfile)
+    } else {
+      newtracks <- c(newtracks, list(track))
+    }
+  }
+  newtracks
+}
+
 ## Identify related tracks. Tracks are related if their bearings are similar
 ## and they are located close enough together.
 consolidateTracks <- function(tracks) {
   bearings <- sapply(tracks, function(x) {
-    gzAzimuth(as.matrix(x[1,]), as.matrix(x[nrow(x),]))
+    if(nrow(x) >= 2)
+      gzAzimuth(as.matrix(x[1,]), as.matrix(x[nrow(x),]))
+    else
+      0
   })
 
   tracklist <- list()
@@ -221,11 +274,19 @@ consolidateTracks <- function(tracks) {
         closeenough <- FALSE
         for(st in 1:length(tracklist[[v]])) {
           comparetrack <- tracklist[[v]][st]
+          if(nrow(tracks[[comparetrack]]) < 2) {
+            closeenough <- TRUE
+            break
+          }
+          
           bdiff <- abs(bearings[t] - bearings[comparetrack])
           bdiff <- (bdiff+angle) %% 360
           if(bdiff > 180) bdiff <- 360-bdiff
-          show(bdiff)
-          if(bdiff <= similarangle) closeenough <- TRUE
+
+          if(bdiff <= similarangle) {
+            closeenough <- TRUE
+            break
+          }
         }
         if(closeenough) {
           show(paste('Testing', t, 'against group', v))
@@ -233,12 +294,17 @@ consolidateTracks <- function(tracks) {
           show(tracklist[[v]])
           tinfo <- NULL
           for(ctrack in tracklist[[v]]) {
-            dists <- 0
-            tinfo <- as.matrix(tracks[[ctrack]])
-            d <- dist2Line(as.matrix(tracks[[t]]), tinfo)
-            dist <- d[,1]
+            tinfo <- tracks[[ctrack]]
+            if(nrow(tinfo) < 2) {
+              dist <- distHaversine(tracks[[t]], tracks[[ctrack]])
+            } else {
+              d <- dist2Line(tracks[[t]], tracks[[ctrack]])
+              dist <- d[,1]
+            }
+            if(length(dist) >= 4)
+              dist <- d[c(-1,-nrow(d)),1] ## Ignore endpoints
             if(min(dist) < maxtrackdist) {
-              show(paste(t, 'is within',min(dist),'of',v))
+              show(paste(t, 'is within',min(dist),'of', ctrack))
               if(max(dist) > separation) {
                 show(paste(t, 'too far away', max(dist),'from track', ctrack))
                 closeenough <- FALSE
@@ -270,6 +336,11 @@ interpolateTracks <- function(tracks) {
     newtracks <- list()
     tnum <- 0
     for(track in tracks) {
+      if(nrow(track) < 2) {
+        newtracks <- c(newtracks, list(track))
+        next
+      }
+      
       newtrack <- NULL
       tnum <- tnum+1
       len <- 0
@@ -283,7 +354,7 @@ interpolateTracks <- function(tracks) {
         newtrack <- rbind(newtrack, track[r,])
         if(seglen > interpolatedist) {
           points <- round(seglen/interpolatedist)+1
-          show(paste(tnum, r, 'interpolating', points))
+          ##show(paste(tnum, r, 'interpolating', points))
           newpoints <- gcIntermediate(as.matrix(track[r,]),
                                       as.matrix(track[r+1,]), points)
           newpoints <- data.frame(lon=newpoints[,1], lat=newpoints[,2])
@@ -326,7 +397,7 @@ sdistances <- function(curve, track) {
 
 fitpcurve <- function(track) {
   olen <- nrow(track)
-  bandwidth <- round(min(0.1, 25/olen), 3)
+  bandwidth <- round(min(0.1, 15/olen), 3)
   show(paste('Fitting curve with', olen, 'points; bandwidth',
              bandwidth))
   curve <- principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=maxit,
