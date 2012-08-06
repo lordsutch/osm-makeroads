@@ -17,13 +17,13 @@
 source('makeroads.R')
 
 ## Set the bounding box here.
-left <- -77.33
-right <- -77.29
-bottom <- 31.19
-top <- 31.22
+left <- -88.95
+right <- -88.90
+bottom <- 37.906
+top <- 38.16
 
 ## What angle to split tracks at (degrees) - splits merged tracks
-splitangle <- 85
+splitangle <- 75
 
 ## How close the angles need to be for ways to be "similar"
 similarangle <- 15
@@ -43,9 +43,9 @@ maxoppositeseparation <- 20
 
 ## Interpolate distance (m) - ensure tracks have a point this often
 ## This copes with the "outlier points drag the track" issue with thinned GPX
-## traces.  Downside: dist2Line gets a lot slower.
+## traces.
 interpolate <- TRUE
-interpolatedist <- 100
+interpolatedist <- 20
 
 ## How close to fit
 delta <- 1/1800    ## Ensure curves are reconstructed within 2 deg second
@@ -53,9 +53,9 @@ maxit <- 50
 
 debug <- TRUE
 
-## If points are more than 400m apart, split the line
+## If points are more than 250m apart, split the line
 ## Deals with overly-thinned traces/waypoint uploads
-splitdistance <- 400
+splitdistance <- 250
 
 ## Get GPS points in the area described by this bounding box
 tracks <- getOSMtracks(left, bottom, right, top)
@@ -76,7 +76,7 @@ length(newtracks2)
 ## Sort tracks by length
 newtracks3 <- sortTracks(newtracks2)
 
-## Simplify tracks - imporves consolidateTracks performance immensely
+## Simplify tracks - improves consolidateTracks performance immensely
 newtracks4 <- simplifyTracks(newtracks3)
 
 ## Find related tracks
@@ -87,7 +87,7 @@ newtracks4 <- interpolateTracks(newtracks3)
 
 ## Save the data for any future runs(?)
 save(tracks, newtracks, newtracks2, newtracks3, newtracks4, tracklist,
-     file='I75-north.Rdata')
+     file='I64.Rdata')
 
 ##load("I75-north.Rdata")
 
