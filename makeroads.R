@@ -119,6 +119,11 @@ splitTracks <- function(tracks) {
 
     thistrack <- NULL
     sofar <- 0
+    if(nrow(track) == 1) {
+      newtracks <- c(newtracks, list(track))
+      next
+    }
+
     for(r in 1:(nrow(track)-1)) {
       ##show(r)
       r1 <- track[r,]
