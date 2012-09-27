@@ -254,19 +254,25 @@ simplifyTracks <- function(tracks) {
   newtracks
 }
 
+calcbearings <- function(x) {
+  if(nrow(x) >= 2)
+    gzAzimuth(as.matrix(x[1,]), as.matrix(x[nrow(x),]))
+  else
+    0
+}
+
 ## Identify related tracks. Tracks are related if their bearings are similar
 ## and they are located close enough together.
 consolidateTracks <- function(tracks) {
-  bearings <- sapply(tracks, function(x) {
-    if(nrow(x) >= 2)
-      gzAzimuth(as.matrix(x[1,]), as.matrix(x[nrow(x),]))
-    else
-      0
-  })
+  bearings <- sapply(tracks, calcbearings)
 
   tracklist <- list()
   tracklist[[1]] <- c(1)
-  for(t in 2:length(tracks)) {
+  newtracks <- tracks
+  loosepoints <- NULL
+  t <- 2
+  while(t <= length(newtracks)) {
+    tryagain <- FALSE
     for(angle in c(0, 180)) {
       ## Try 180-degrees off as a last resort
       found <- FALSE
@@ -279,7 +285,7 @@ consolidateTracks <- function(tracks) {
         closeenough <- FALSE
         for(st in 1:length(tracklist[[v]])) {
           comparetrack <- tracklist[[v]][st]
-          if(nrow(tracks[[comparetrack]]) < 2) {
+          if(nrow(newtracks[[comparetrack]]) < 2) {
             closeenough <- TRUE
             break
           }
@@ -297,22 +303,72 @@ consolidateTracks <- function(tracks) {
           show(paste('Testing', t, 'against group', v))
           closeenough <- FALSE
           show(tracklist[[v]])
-          tinfo <- NULL
           for(ctrack in tracklist[[v]]) {
-            tinfo <- tracks[[ctrack]]
-            if(nrow(tinfo) < 2) {
-              dist <- distHaversine(tracks[[t]], tracks[[ctrack]])
+            if(nrow(newtracks[[ctrack]]) < 2) {
+              if(nrow(newtracks[[t]]) < 2) {
+                dist <- distHaversine(newtracks[[t]], newtracks[[ctrack]])
+              } else {
+                d <- dist2Line(newtracks[[ctrack]], newtracks[[t]])
+                dist <- d[,1]
+              }
             } else {
-              d <- dist2Line(tracks[[t]], tracks[[ctrack]])
+              d <- dist2Line(newtracks[[t]], newtracks[[ctrack]])
               dist <- d[,1]
             }
+            show(dist)
+            fdist <- dist
             if(length(dist) >= 4)
-              dist <- d[c(-1,-nrow(d)),1] ## Ignore endpoints
+              dist <- dist[2:(length(dist)-1)] ## Ignore endpoints
+            
             if(min(dist) < maxtrackdist) {
               show(paste(t, 'is within',min(dist),'of', ctrack))
               if(max(dist) > separation) {
                 show(paste(t, 'too far away', max(dist),'from track', ctrack))
-                closeenough <- FALSE
+                runs <- rle(fdist <= separation)
+                ## Consider splitting, but only if the overlap is long enough
+                if(any(runs$lengths[runs$values] > 2)) {
+                  closetracks <- NULL
+                  fartracks <- NULL
+                  points <- NULL
+                  j <- 1
+                  show(runs)
+                  track <- newtracks[[t]]
+                  for(i in 1:length(runs$lengths)) {
+                    ##show(i)
+                    ##show(runs$lengths[i])
+                    trackseg <- track[j:(j+runs$lengths[i]-1),]
+                    j <- j + nrow(trackseg)
+                    ##show(nrow(trackseg))
+                    if(nrow(trackseg) > 1) {
+                      if(runs$values[i])
+                        closetracks <- c(closetracks, list(trackseg))
+                      else
+                        fartracks <- c(fartracks, list(trackseg))
+                    } else {
+                      points <- c(points, list(trackseg))
+                    }
+                  }
+                  ##print(length(closetracks))
+                  ##print(length(fartracks))
+                  
+                  closeenough <- FALSE
+                  xtracks <- c(newtracks[1:(t-1)], closetracks, fartracks)
+                  xbearings <- bearings[1:(t-1)]
+                  if(length(closetracks))
+                    xbearings <- c(xbearings, sapply(closetracks, calcbearings))
+                  if(length(fartracks))
+                    xbearings <- c(xbearings, sapply(fartracks, calcbearings))
+                  if(t < length(newtracks)) {
+                    xtracks <- c(xtracks, newtracks[(t+1):length(newtracks)])
+                    xbearings <- c(xbearings, bearings[(t+1):length(bearings)])
+                  }
+                  ## Points at the end
+                  newtracks <- c(xtracks, points)
+                  bearings <- c(xbearings, rep(0, length(points)))
+                  ## loop again without incrementing t; why we're not using for
+                  tryagain <- TRUE
+                }
+                ## Just fall through to the next group
                 break
               } else {
                 closeenough <- TRUE
@@ -329,9 +385,18 @@ consolidateTracks <- function(tracks) {
       }
       if(found) break;
     }
-    if(!found) tracklist[[length(tracklist)+1]] <- c(t)
+    if(!found) {
+      if(nrow(newtracks[[t]]) >= 2)
+        tracklist[[length(tracklist)+1]] <- c(t)
+      else
+        loosepoints <- c(loosepoints, t)
+    }
+    if(!tryagain)
+      t <- t + 1
   }
-  tracklist
+  ret <- list(tracklist=tracklist, tracks=newtracks, loosepoints=loosepoints)
+  ret
+  ##tracklist
 }
 
 interpolateTracks <- function(tracks) {

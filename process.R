@@ -14,26 +14,31 @@
 ## You may freely use, redistribute, and modify this software under the
 ## terms of the GNU General Public License, version 2 or later.
 
+## Bring in the generic code.  Some of this code should be moved there
+## eventually.
 source('makeroads.R')
 
+savefile <- "SR243.Rdata"
+
 ## Set the bounding box here.
-left <- -88.95
-right <- -88.90
-bottom <- 37.906
-top <- 38.16
+left <- -83.387
+right <- -83.306
+bottom <- 32.856
+top <- 32.904
 
 ## What angle to split tracks at (degrees) - splits merged tracks
-splitangle <- 75
+splitangle <- 90
 
 ## How close the angles need to be for ways to be "similar"
-similarangle <- 15
+similarangle <- 90
 
 ## Max distance similar tracks can be apart (m) somewhere
 ## Realistically the same road usually gets within 1 meter at least once...
 maxtrackdist <- 10
 
-## Max distance a track can ever be away from the bundle to be distinct (m)
-maxseparation <- 90
+## Max distance a track can ever be away from the bundle before we split it
+## in meters
+maxseparation <- 40
 
 ## How much an opposite-angle track can be off before we reject it
 ## should be much smaller than above, since we need to account for medians
@@ -77,19 +82,27 @@ length(newtracks2)
 newtracks3 <- sortTracks(newtracks2)
 
 ## Simplify tracks - improves consolidateTracks performance immensely
-newtracks4 <- simplifyTracks(newtracks3)
+stracks <- simplifyTracks(newtracks3)
 
 ## Find related tracks
-tracklist <- consolidateTracks(newtracks4)
+ret <- consolidateTracks(stracks)
+tracklist <- ret$tracklist
+newtracks4 <- ret$tracks
+
+## Run a second pass
+## p2tracks <- sortTracks(newtracks4)
+## ret <- consolidateTracks(p2tracks)
+## tracklist <- ret$tracklist
+## newtracks4 <- ret$tracks
 
 ## Interpolate extra points to improve fit algorithm performance
-newtracks4 <- interpolateTracks(newtracks3)
+newtracks5 <- interpolateTracks(newtracks4)
 
 ## Save the data for any future runs(?)
-save(tracks, newtracks, newtracks2, newtracks3, newtracks4, tracklist,
-     file='I64.Rdata')
+save(tracks, newtracks, newtracks2, newtracks3, newtracks4, newtracks5,
+     tracklist, file=savefile)
 
-##load("I75-north.Rdata")
+##load(savefile)
 
 ## Make the best fit tracks and save them as GPX files.
 tcount <- 0
@@ -97,13 +110,13 @@ pdf(onefile=T, height=8, width=6)
 for(group in tracklist) {
   tcount <- tcount + 1
   mergedtracks <- NULL
-  plot(newtracks4[[1]], xlim=c(left, right), ylim=c(bottom, top), asp=0.75,
+  plot(newtracks5[[1]], xlim=c(left, right), ylim=c(bottom, top), asp=0.75,
        type='l', col='gray50')
   color <- 3
   for(t in group) {
-    mergedtracks <- rbind(mergedtracks, newtracks4[[t]])
-    lines(newtracks4[[t]], pch='.', col=color, lwd=0.2)
-    text(newtracks4[[t]][1,], labels=t, col=color)
+    mergedtracks <- rbind(mergedtracks, newtracks5[[t]])
+    lines(newtracks5[[t]], pch='.', col=color, lwd=0.2)
+    text(newtracks5[[t]][1,], labels=t, col=color, cex=.5)
     color <- color+1
   }
 
