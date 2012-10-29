@@ -274,6 +274,9 @@ consolidateTracks <- function(tracks) {
   while(t <= length(newtracks)) {
     tryagain <- FALSE
     for(angle in c(0, 180)) {
+      if(tryagain)
+        break
+      
       ## Try 180-degrees off as a last resort
       found <- FALSE
       if(angle == 180)
@@ -282,6 +285,9 @@ consolidateTracks <- function(tracks) {
         separation <- maxseparation
         
       for(v in 1:length(tracklist)) {
+        if(tryagain)
+          break
+        
         closeenough <- FALSE
         for(st in 1:length(tracklist[[v]])) {
           comparetrack <- tracklist[[v]][st]
@@ -304,6 +310,9 @@ consolidateTracks <- function(tracks) {
           closeenough <- FALSE
           show(tracklist[[v]])
           for(ctrack in tracklist[[v]]) {
+            if(tryagain)
+              break
+            
             if(nrow(newtracks[[ctrack]]) < 2) {
               if(nrow(newtracks[[t]]) < 2) {
                 dist <- distHaversine(newtracks[[t]], newtracks[[ctrack]])
@@ -324,7 +333,7 @@ consolidateTracks <- function(tracks) {
               show(paste(t, 'is within',min(dist),'of', ctrack))
               if(max(dist) > separation) {
                 show(paste(t, 'too far away', max(dist),'from track', ctrack))
-                runs <- rle(fdist <= separation)
+                runs <- rle(fdist <= maxtrackdist)
                 ## Consider splitting, but only if the overlap is long enough
                 if(any(runs$lengths[runs$values] > 2)) {
                   closetracks <- NULL
@@ -385,7 +394,7 @@ consolidateTracks <- function(tracks) {
       }
       if(found) break;
     }
-    if(!found) {
+    if(!tryagain && !found) {
       if(nrow(newtracks[[t]]) >= 2)
         tracklist[[length(tracklist)+1]] <- c(t)
       else
