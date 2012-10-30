@@ -22,3 +22,8 @@ If you source process.R, you'll get a bunch of GPX files named
 'roadway-*.gpx', one per identified track, along with Rplots.pdf
 containing a visual representation of each estimated track along with
 the tracks that were used to construct it.
+
+To-Do
+=====
+
+* Take advantage of parallelism (investigate R multicore?)

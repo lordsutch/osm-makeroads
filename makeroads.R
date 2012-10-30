@@ -273,10 +273,20 @@ consolidateTracks <- function(tracks) {
   t <- 2
   while(t <= length(newtracks)) {
     tryagain <- FALSE
-    for(angle in c(0, 180)) {
+    closest <- 0
+    mindist <- Inf
+    
+    point <- (nrow(newtracks[[t]]) < 2)
+    alist <- c(0, 180)
+    if(point) {
+      show(paste('Finding closest track for point', t))
+      alist <- c(0)
+    }
+      
+    for(angle in alist) {
       if(tryagain)
         break
-      
+
       ## Try 180-degrees off as a last resort
       found <- FALSE
       if(angle == 180)
@@ -289,26 +299,44 @@ consolidateTracks <- function(tracks) {
           break
         
         closeenough <- FALSE
-        for(st in 1:length(tracklist[[v]])) {
-          comparetrack <- tracklist[[v]][st]
-          if(nrow(newtracks[[comparetrack]]) < 2) {
-            closeenough <- TRUE
-            break
+        if(point) {
+          for(ctrack in tracklist[[v]]) {
+            if(nrow(newtracks[[ctrack]]) < 2) {
+              dist <- distHaversine(newtracks[[ctrack]], newtracks[[t]])
+            } else {
+              d <- dist2Line(newtracks[[t]], newtracks[[ctrack]])
+              dist <- d[,1]
+            }
+            if(min(dist) < mindist) {
+              mindist <- min(dist)
+              closest <- v
+            }
           }
-          
-          bdiff <- abs(bearings[t] - bearings[comparetrack])
-          bdiff <- (bdiff+angle) %% 360
-          if(bdiff > 180) bdiff <- 360-bdiff
-
-          if(bdiff <= similarangle) {
-            closeenough <- TRUE
-            break
-          }
-        }
-        if(closeenough) {
+        } else {
           show(paste('Testing', t, 'against group', v))
+          for(st in 1:length(tracklist[[v]])) {
+            comparetrack <- tracklist[[v]][st]
+            if(nrow(newtracks[[comparetrack]]) < 2) {
+              closeenough <- TRUE
+              break
+            }
+            
+            bdiff <- abs(bearings[t] - bearings[comparetrack])
+            if(angle == 0 && bdiff <= similarangle) {
+              closeenough <- TRUE
+              break
+            } else if (angle == 180 &&
+                       abs(180-bdiff) >= abs(180-similarangle)) {
+              closeenough <- TRUE
+              break
+            }
+          }
+
+          if(!closeenough) next
+
+          show('Angles close')
           closeenough <- FALSE
-          show(tracklist[[v]])
+          ## show(tracklist[[v]])
           for(ctrack in tracklist[[v]]) {
             if(tryagain)
               break
@@ -324,10 +352,10 @@ consolidateTracks <- function(tracks) {
               d <- dist2Line(newtracks[[t]], newtracks[[ctrack]])
               dist <- d[,1]
             }
-            show(dist)
+            ## show(dist)
             fdist <- dist
-            if(length(dist) >= 4)
-              dist <- dist[2:(length(dist)-1)] ## Ignore endpoints
+            ##if(length(dist) >= 4)
+            ##  dist <- dist[2:(length(dist)-1)] ## Ignore endpoints
             
             if(min(dist) < maxtrackdist) {
               show(paste(t, 'is within',min(dist),'of', ctrack))
@@ -363,10 +391,12 @@ consolidateTracks <- function(tracks) {
                   closeenough <- FALSE
                   xtracks <- c(newtracks[1:(t-1)], closetracks, fartracks)
                   xbearings <- bearings[1:(t-1)]
-                  if(length(closetracks))
+                  if(length(closetracks)) {
                     xbearings <- c(xbearings, sapply(closetracks, calcbearings))
-                  if(length(fartracks))
+                  }
+                  if(length(fartracks)) {
                     xbearings <- c(xbearings, sapply(fartracks, calcbearings))
+                  }
                   if(t < length(newtracks)) {
                     xtracks <- c(xtracks, newtracks[(t+1):length(newtracks)])
                     xbearings <- c(xbearings, bearings[(t+1):length(bearings)])
@@ -384,7 +414,7 @@ consolidateTracks <- function(tracks) {
               }
             }
           }
-          if(closeenough) {
+          if(!point && closeenough) {
             tracklist[[v]] <- c(tracklist[[v]], t)
             found <- TRUE
             break
@@ -394,7 +424,13 @@ consolidateTracks <- function(tracks) {
       }
       if(found) break;
     }
-    if(!tryagain && !found) {
+    if(point) {
+      show(paste(mindist, closest))
+      if(mindist < maxtrackdist)
+        tracklist[[closest]] <- c(tracklist[[closest]], t)
+      else
+        loosepoints <- c(loosepoints, t)
+    } else if(!tryagain && !found) {
       if(nrow(newtracks[[t]]) >= 2)
         tracklist[[length(tracklist)+1]] <- c(t)
       else
@@ -449,7 +485,7 @@ interpolateTracks <- function(tracks) {
 
 showtracks <- function(tracks, basetrack, others) {
   plot(tracks[[basetrack]], xlim=c(left, right), ylim=c(bottom, top),
-       asp=0.75, type='l', col='gray50')
+       asp=0.8, type='l', col='gray50')
   color <- 3
   for(t in others) {
     lines(tracks[[t]], pch='.', col=color, lwd=0.2)
