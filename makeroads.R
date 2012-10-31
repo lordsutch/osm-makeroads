@@ -283,6 +283,31 @@ findClosestTrackToPoint <- function(point, tracks, tracklist) {
   return(0)
 }
 
+fuzzyRLE <- function(x) {
+  res <- rle(x)
+  falseClose <- which(res$values == TRUE & res$lengths == 1)
+  
+  ## Ignore endpoints
+  falseClose <- falseClose[falseClose > 1 & falseClose < length(res$values)]
+
+  show(falseClose)
+  for(j in rev(seq_along(falseClose))) {
+    pos <- falseClose[[j]]
+    nvalues <- c(res$values[1:(pos-1)])
+    if(pos > 2)
+      nlengths <- c(res$lengths[1:(pos-2)])
+    else
+      nlengths <- NULL
+    nlengths <- c(nlengths, res$lengths[pos-1]+res$lengths[pos]+res$lengths[pos+1])
+    if(pos < length(res$values)+1) {
+      nvalues <- c(nvalues, res$values[(pos+2):length(res$values)])
+      nlengths <- c(nlengths, res$lengths[(pos+2):length(res$values)])
+    }                  
+    res <- list(values=nvalues, lengths=nlengths)
+  }
+  res
+}
+
 ## Identify related tracks. Tracks are related if their bearings are similar
 ## and they are located close enough together.
 consolidateTracks <- function(tracks) {
@@ -345,7 +370,7 @@ consolidateTracks <- function(tracks) {
         for(ctrack in tracklist[[v]]) {
           if(tryagain)
             break
-          
+
           if(nrow(newtracks[[ctrack]]) < 2) {
             if(nrow(newtracks[[t]]) < 2) {
               dist <- distHaversine(newtracks[[t]], newtracks[[ctrack]])
@@ -366,7 +391,7 @@ consolidateTracks <- function(tracks) {
             show(paste(t, 'is within',min(dist),'of', ctrack))
             if(max(dist) > separation) {
               show(paste(t, 'too far away', max(dist),'from track', ctrack))
-              runs <- rle(fdist <= maxtrackdist)
+              runs <- fuzzyRLE(fdist <= maxtrackdist)
               ## Consider splitting, but only if the overlap is long enough
               if(any(runs$lengths[runs$values] > 2)) {
                 closetracks <- NULL
@@ -413,9 +438,8 @@ consolidateTracks <- function(tracks) {
                 
                 ## loop again without incrementing t; why we're not using for
                 tryagain <- TRUE
+                break
               }
-              ## Just fall through to the next group
-              break
             } else {
               closeenough <- TRUE
             }
