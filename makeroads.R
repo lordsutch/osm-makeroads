@@ -26,7 +26,7 @@ library(geosphere)
 
 fixupLines <- function(SpLinesOb) {
   tracks <- list()
-  
+
   for(linesOb in SpLinesOb@lines) {
     for(lineOb in linesOb@Lines) {
       coords <- coordinates(lineOb)
@@ -39,7 +39,7 @@ fixupLines <- function(SpLinesOb) {
 
 parseGPXfile <- function(filename) {
   converted <- try(readOGR(filename, 'tracks'), TRUE)
-  
+
   if(inherits(converted, 'try-error')) return(NULL)
 
   data <- as.SpatialLines.SLDF(converted)
@@ -58,7 +58,7 @@ fetchGPXpage <- function(left, bottom, right, top, page=0) {
   download.file(pageurl, filename1, cacheOK=FALSE)
 
   converted <- parseGPXfile(filename1)
-  
+
   if(!debug) unlink(filename1)
   converted
 }
@@ -76,7 +76,7 @@ getOSMtracks <- function(left, bottom, right, top) {
     top <- bottom
     bottom <- temp
   }
-  
+
   repeat {
     converted <- fetchGPXpage(left, bottom, right, top, page)
 
@@ -159,31 +159,31 @@ splitTracks2 <- function(tracks) {
 
   for(track in tracks) {
     ignorecount <- 0
-    
+
     if(nrow(track) <= 2) {
       newtracks <- c(newtracks, list(track))
       next
     }
-    
+
     ##bearings <- trackAzimuth(as.matrix(track))
-    
+
     thistrack <- track[1,]
     tracklen <- 0
     for(r in 2:(nrow(track)-1)) {
       thistrack <- rbind(thistrack, track[r,])
 
       spos = max(nrow(thistrack)-2, 1)
-      
+
       avbearing <- gzAzimuth(as.matrix(thistrack[spos,]),
                              as.matrix(track[r,]))
       avbearing2 <- gzAzimuth(as.matrix(thistrack[1,]),
                               as.matrix(track[r,]))
-      
+
       difference <- min((avbearing2-avbearing) %% 360,
                         (avbearing-avbearing2) %% 360)
 
       seglen <- distHaversine(track[r,], track[r+1,])
-      
+
       if(nrow(thistrack) > 1 && abs(difference) >= splitangle) {
         ## Assume a big turn between segments is a break in the track
         ## If points within 25m, ignore (probably stationary GPS error)
@@ -234,7 +234,7 @@ simplifyTracks <- function(tracks) {
     if(nrow(track) >= 3) {
       infile <- tempfile(fileext='.csv')
       outfile <- tempfile(fileext='.csv')
-      
+
       write.csv(round(track, 6), file=infile)
 
       system2('gpsbabel', c('-t', '-i', 'unicsv', '-f', infile,
@@ -269,10 +269,10 @@ findClosestTrackToPoint <- function(point, tracks, tracklist) {
   closestTrack <- which.min(dists)
 
   show(paste(mindist, closestTrack))
-  
+
   if(mindist > maxtrackdist)
     return(0)
-  
+
   for(t in seq_along(tracklist)) {
     if(closestTrack %in% tracklist[[t]])
       return(t)
@@ -285,8 +285,11 @@ findClosestTrackToPoint <- function(point, tracks, tracklist) {
 
 fuzzyRLE <- function(x) {
   res <- rle(x)
-  falseClose <- which(res$values == TRUE & res$lengths == 1)
+  ##show(res$values)
+  ##show(res$lengths)
   
+  falseClose <- which(res$values == TRUE & res$lengths == 1)
+
   ## Ignore endpoints
   falseClose <- falseClose[falseClose > 1 & falseClose < length(res$values)]
 
@@ -299,11 +302,12 @@ fuzzyRLE <- function(x) {
     else
       nlengths <- NULL
     nlengths <- c(nlengths, res$lengths[pos-1]+res$lengths[pos]+res$lengths[pos+1])
-    if(pos < length(res$values)+1) {
+    if(pos < (length(res$values)-2)) {
       nvalues <- c(nvalues, res$values[(pos+2):length(res$values)])
-      nlengths <- c(nlengths, res$lengths[(pos+2):length(res$values)])
-    }                  
+      nlengths <- c(nlengths, res$lengths[(pos+2):length(res$lengths)])
+    }
     res <- list(values=nvalues, lengths=nlengths)
+    ##show(res)
   }
   res
 }
@@ -319,12 +323,12 @@ consolidateTracks <- function(tracks) {
   pointidx <- sapply(tracks, function(x) (nrow(x) == 1))
   newtracks <- tracks[!pointidx]
   newpoints <- tracks[pointidx]
-  
+
   loosepoints <- NULL
   t <- 2
   while(t <= length(newtracks)) {
     tryagain <- FALSE
-    
+
     alist <- c(0, 180)
     for(angle in alist) {
       if(tryagain)
@@ -336,7 +340,7 @@ consolidateTracks <- function(tracks) {
         separation <- maxoppositeseparation
       else
         separation <- maxseparation
-        
+
       for(v in seq_along(tracklist)) {
         if(tryagain)
           break
@@ -349,9 +353,9 @@ consolidateTracks <- function(tracks) {
             closeenough <- TRUE
             break
           }
-          
+
           bdiff <- abs(bearings[t] - bearings[comparetrack])
-          
+
           if(angle == 0 && bdiff <= similarangle) {
             closeenough <- TRUE
             break
@@ -386,7 +390,7 @@ consolidateTracks <- function(tracks) {
           fdist <- dist
           ##if(length(dist) >= 4)
           ##  dist <- dist[2:(length(dist)-1)] ## Ignore endpoints
-          
+
           if(min(dist) < maxtrackdist) {
             show(paste(t, 'is within',min(dist),'of', ctrack))
             if(max(dist) > separation) {
@@ -417,7 +421,7 @@ consolidateTracks <- function(tracks) {
                 }
                 print(length(closetracks))
                 print(length(fartracks))
-                
+
                 closeenough <- FALSE
                 newpoints <- c(newpoints, points)
 
@@ -435,7 +439,7 @@ consolidateTracks <- function(tracks) {
                   found <- TRUE
                   break
                 }
-                
+
                 ## loop again without incrementing t; why we're not using for
                 tryagain <- TRUE
                 break
@@ -470,7 +474,7 @@ consolidateTracks <- function(tracks) {
     trackforpoints <- sapply(newpoints, findClosestTrackToPoint, newtracks,
                              tracklist)
     show(trackforpoints)
-    
+
     loosepoints <- c(loosepoints, newpoints[trackforpoints == 0])
   }
 
@@ -491,7 +495,7 @@ interpolateTracks <- function(tracks) {
         newtracks <- c(newtracks, list(track))
         next
       }
-      
+
       newtrack <- NULL
       tnum <- tnum+1
       len <- 0
@@ -560,7 +564,7 @@ fitpcurve <- function(track) {
   track <- track[-(d >= 4),]
   if(nrow(track) > 0 && nrow(track) < olen) {
     show(paste('Refitting curve with', nrow(track), 'points'))
-    
+
     curve <- principal.curve(as.matrix(track), ## start=curve$s[-(d>=4),],
                              trace=T, f=bandwidth,
                              maxit=maxit,
