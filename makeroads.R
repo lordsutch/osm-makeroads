@@ -92,7 +92,8 @@ getOSMtracks <- function(left, bottom, right, top) {
 }
 
 ## Open GPX files directly (bypassing API download step)
-getOSMtracksFiles <- function(filenames) {
+getOSMtracksFiles <- function(...) {
+  filenames <- list(...)
   tracks <- c()
   for(filename in filenames) {
     converted <- parseGPXfile(filename)

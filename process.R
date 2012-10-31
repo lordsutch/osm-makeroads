@@ -26,6 +26,12 @@ top <- 33.380
 right <- -84.137
 bottom <- 33.023
 
+## Get GPS points in the area described by this bounding box
+tracks <- getOSMtracks(left, top, right, bottom)
+
+## To load GPX file contents instead...
+## tracks <- getOSMtracksFiles("filename1.gpx", "filename2.gpx", etc...)
+
 ## What angle to split tracks at (degrees) - splits merged tracks
 splitangle <- 90
 
@@ -61,9 +67,6 @@ debug <- TRUE
 ## If points are more than 250m apart, split the line
 ## Deals with overly-thinned traces/waypoint uploads
 splitdistance <- 250
-
-## Get GPS points in the area described by this bounding box
-tracks <- getOSMtracks(left, bottom, right, top)
 
 ## Debugging
 ##tracks <- getOSMtracksFiles(list.files(pattern='file.*[.]gpx'))
