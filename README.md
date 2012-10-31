@@ -26,4 +26,4 @@ the tracks that were used to construct it.
 To-Do
 =====
 
-* Take advantage of parallelism (investigate R multicore?)
+* Take advantage of parallelism (investigate R multicore?).

@@ -18,13 +18,13 @@
 ## eventually.
 source('makeroads.R')
 
-savefile <- "SR243.Rdata"
+savefile <- "US41-Hampton-Barnesville.Rdata"
 
 ## Set the bounding box here.
-left <- -83.387
-right <- -83.306
-bottom <- 32.856
-top <- 32.904
+left <- -84.311
+right <- -84.137
+bottom <- 33.023
+top <- 33.380
 
 ## What angle to split tracks at (degrees) - splits merged tracks
 splitangle <- 90
@@ -86,8 +86,11 @@ stracks <- simplifyTracks(newtracks3)
 
 ## Find related tracks
 ret <- consolidateTracks(stracks)
+
 tracklist <- ret$tracklist
 newtracks4 <- ret$tracks
+trackforpoints <- ret$trackforpoints
+tpoints <- ret$points
 
 ## Run a second pass
 ## p2tracks <- sortTracks(newtracks4)
@@ -100,15 +103,14 @@ newtracks5 <- interpolateTracks(newtracks4)
 
 ## Save the data for any future runs(?)
 save(tracks, newtracks, newtracks2, newtracks3, newtracks4, newtracks5,
-     tracklist, file=savefile)
+     tracklist, points, trackforpoints, file=savefile)
 
 ##load(savefile)
 
 ## Make the best fit tracks and save them as GPX files.
-tcount <- 0
 pdf(onefile=T, height=8, width=6)
-for(group in tracklist) {
-  tcount <- tcount + 1
+for(tcount in seq_along(tracklist)) {
+  group <- tracklist[[tcount]]
   mergedtracks <- NULL
   plot(newtracks5[[1]], xlim=c(left, right), ylim=c(bottom, top), asp=0.75,
        type='l', col='gray50')
@@ -116,9 +118,14 @@ for(group in tracklist) {
   for(t in group) {
     mergedtracks <- rbind(mergedtracks, newtracks5[[t]])
     lines(newtracks5[[t]], pch='.', col=color, lwd=0.2)
-    text(newtracks5[[t]][1,], labels=t, col=color, cex=.5)
+    if(nrow(newtracks5[[t]]) > 2) {
+      text(newtracks5[[t]][1,], labels=t, col=color, cex=.5)
+    }
     color <- color+1
   }
+  thesepoints <- do.call(rbind, tpoints[trackforpoints == tcount])
+  points(thesepoints, pch='x', col=2, cex=.3)
+  mergedtracks <- rbind(mergedtracks, thesepoints)
 
   if(nrow(mergedtracks) < 50) {
     show(paste('Skipping small group', tcount))

@@ -261,6 +261,27 @@ calcbearings <- function(x) {
     0
 }
 
+findClosestTrackToPoint <- function(point, tracks, tracklist) {
+  dists <- sapply(tracks, function(line, point) dist2Line(point, line)[,1],
+                  point)
+  mindist <- min(dists)
+  closestTrack <- which.min(dists)
+
+  show(paste(mindist, closestTrack))
+  
+  if(mindist > maxtrackdist)
+    return(0)
+  
+  for(t in seq_along(tracklist)) {
+    if(closestTrack %in% tracklist[[t]])
+      return(t)
+  }
+
+  ## Failure mode
+  show('Why are we here?')
+  return(0)
+}
+
 ## Identify related tracks. Tracks are related if their bearings are similar
 ## and they are located close enough together.
 consolidateTracks <- function(tracks) {
@@ -268,21 +289,17 @@ consolidateTracks <- function(tracks) {
 
   tracklist <- list()
   tracklist[[1]] <- c(1)
-  newtracks <- tracks
+
+  pointidx <- sapply(tracks, function(x) (nrow(x) == 1))
+  newtracks <- tracks[!pointidx]
+  newpoints <- tracks[pointidx]
+  
   loosepoints <- NULL
   t <- 2
   while(t <= length(newtracks)) {
     tryagain <- FALSE
-    closest <- 0
-    mindist <- Inf
     
-    point <- (nrow(newtracks[[t]]) < 2)
     alist <- c(0, 180)
-    if(point) {
-      show(paste('Finding closest track for point', t))
-      alist <- c(0)
-    }
-      
     for(angle in alist) {
       if(tryagain)
         break
@@ -297,140 +314,114 @@ consolidateTracks <- function(tracks) {
       for(v in 1:length(tracklist)) {
         if(tryagain)
           break
-        
         closeenough <- FALSE
-        if(point) {
-          for(ctrack in tracklist[[v]]) {
-            if(nrow(newtracks[[ctrack]]) < 2) {
-              dist <- distHaversine(newtracks[[ctrack]], newtracks[[t]])
-            } else {
-              d <- dist2Line(newtracks[[t]], newtracks[[ctrack]])
-              dist <- d[,1]
-            }
-            if(min(dist) < mindist) {
-              mindist <- min(dist)
-              closest <- v
-            }
-          }
-        } else {
-          show(paste('Testing', t, 'against group', v))
-          for(st in 1:length(tracklist[[v]])) {
-            comparetrack <- tracklist[[v]][st]
-            if(nrow(newtracks[[comparetrack]]) < 2) {
-              closeenough <- TRUE
-              break
-            }
-            
-            bdiff <- abs(bearings[t] - bearings[comparetrack])
-            if(angle == 0 && bdiff <= similarangle) {
-              closeenough <- TRUE
-              break
-            } else if (angle == 180 &&
-                       abs(180-bdiff) >= abs(180-similarangle)) {
-              closeenough <- TRUE
-              break
-            }
-          }
 
-          if(!closeenough) next
-
-          show('Angles close')
-          closeenough <- FALSE
-          ## show(tracklist[[v]])
-          for(ctrack in tracklist[[v]]) {
-            if(tryagain)
-              break
-            
-            if(nrow(newtracks[[ctrack]]) < 2) {
-              if(nrow(newtracks[[t]]) < 2) {
-                dist <- distHaversine(newtracks[[t]], newtracks[[ctrack]])
-              } else {
-                d <- dist2Line(newtracks[[ctrack]], newtracks[[t]])
-                dist <- d[,1]
-              }
-            } else {
-              d <- dist2Line(newtracks[[t]], newtracks[[ctrack]])
-              dist <- d[,1]
-            }
-            ## show(dist)
-            fdist <- dist
-            ##if(length(dist) >= 4)
-            ##  dist <- dist[2:(length(dist)-1)] ## Ignore endpoints
-            
-            if(min(dist) < maxtrackdist) {
-              show(paste(t, 'is within',min(dist),'of', ctrack))
-              if(max(dist) > separation) {
-                show(paste(t, 'too far away', max(dist),'from track', ctrack))
-                runs <- rle(fdist <= maxtrackdist)
-                ## Consider splitting, but only if the overlap is long enough
-                if(any(runs$lengths[runs$values] > 2)) {
-                  closetracks <- NULL
-                  fartracks <- NULL
-                  points <- NULL
-                  j <- 1
-                  show(runs)
-                  track <- newtracks[[t]]
-                  for(i in 1:length(runs$lengths)) {
-                    ##show(i)
-                    ##show(runs$lengths[i])
-                    trackseg <- track[j:(j+runs$lengths[i]-1),]
-                    j <- j + nrow(trackseg)
-                    ##show(nrow(trackseg))
-                    if(nrow(trackseg) > 1) {
-                      if(runs$values[i])
-                        closetracks <- c(closetracks, list(trackseg))
-                      else
-                        fartracks <- c(fartracks, list(trackseg))
-                    } else {
-                      points <- c(points, list(trackseg))
-                    }
-                  }
-                  ##print(length(closetracks))
-                  ##print(length(fartracks))
-                  
-                  closeenough <- FALSE
-                  xtracks <- c(newtracks[1:(t-1)], closetracks, fartracks)
-                  xbearings <- bearings[1:(t-1)]
-                  if(length(closetracks)) {
-                    xbearings <- c(xbearings, sapply(closetracks, calcbearings))
-                  }
-                  if(length(fartracks)) {
-                    xbearings <- c(xbearings, sapply(fartracks, calcbearings))
-                  }
-                  if(t < length(newtracks)) {
-                    xtracks <- c(xtracks, newtracks[(t+1):length(newtracks)])
-                    xbearings <- c(xbearings, bearings[(t+1):length(bearings)])
-                  }
-                  ## Points at the end
-                  newtracks <- c(xtracks, points)
-                  bearings <- c(xbearings, rep(0, length(points)))
-                  ## loop again without incrementing t; why we're not using for
-                  tryagain <- TRUE
-                }
-                ## Just fall through to the next group
-                break
-              } else {
-                closeenough <- TRUE
-              }
-            }
+        show(paste('Testing', t, 'against group', v))
+        for(st in 1:length(tracklist[[v]])) {
+          comparetrack <- tracklist[[v]][st]
+          if(nrow(newtracks[[comparetrack]]) < 2) {
+            closeenough <- TRUE
+            break
           }
-          if(!point && closeenough) {
-            tracklist[[v]] <- c(tracklist[[v]], t)
-            found <- TRUE
+          
+          bdiff <- abs(bearings[t] - bearings[comparetrack])
+          
+          if(angle == 0 && bdiff <= similarangle) {
+            closeenough <- TRUE
+            break
+          } else if (angle == 180 &&
+                     abs(180-bdiff) >= abs(180-similarangle)) {
+            closeenough <- TRUE
             break
           }
         }
-        if(found) break;
+
+        if(!closeenough) next
+
+        show('Angles close')
+        closeenough <- FALSE
+        ## show(tracklist[[v]])
+        for(ctrack in tracklist[[v]]) {
+          if(tryagain)
+            break
+          
+          if(nrow(newtracks[[ctrack]]) < 2) {
+            if(nrow(newtracks[[t]]) < 2) {
+              dist <- distHaversine(newtracks[[t]], newtracks[[ctrack]])
+            } else {
+              d <- dist2Line(newtracks[[ctrack]], newtracks[[t]])
+              dist <- d[,1]
+            }
+          } else {
+            d <- dist2Line(newtracks[[t]], newtracks[[ctrack]])
+            dist <- d[,1]
+          }
+          ## show(dist)
+          fdist <- dist
+          ##if(length(dist) >= 4)
+          ##  dist <- dist[2:(length(dist)-1)] ## Ignore endpoints
+          
+          if(min(dist) < maxtrackdist) {
+            show(paste(t, 'is within',min(dist),'of', ctrack))
+            if(max(dist) > separation) {
+              show(paste(t, 'too far away', max(dist),'from track', ctrack))
+              runs <- rle(fdist <= maxtrackdist)
+              ## Consider splitting, but only if the overlap is long enough
+              if(any(runs$lengths[runs$values] > 2)) {
+                closetracks <- NULL
+                fartracks <- NULL
+                points <- NULL
+                j <- 1
+                show(runs)
+                track <- newtracks[[t]]
+                for(i in 1:length(runs$lengths)) {
+                  ##show(i)
+                  ##show(runs$lengths[i])
+                  trackseg <- track[j:(j+runs$lengths[i]-1),]
+                  j <- j + nrow(trackseg)
+                  ##show(nrow(trackseg))
+                  if(nrow(trackseg) > 1) {
+                    if(runs$values[i])
+                      closetracks <- c(closetracks, list(trackseg))
+                    else
+                      fartracks <- c(fartracks, list(trackseg))
+                  } else {
+                    points <- c(points, list(trackseg))
+                  }
+                }
+                print(length(closetracks))
+                print(length(fartracks))
+                
+                closeenough <- FALSE
+                newpoints <- c(newpoints, points)
+
+                ftracks <- c(closetracks, fartracks)
+                if(t < length(newtracks))
+                  ftracks <- c(ftracks, newtracks[(t+1):length(newtracks)])
+
+                ftracks <- sortTracks(ftracks)
+                newtracks <- c(newtracks[1:(t-1)], ftracks)
+                bearings <- sapply(newtracks, calcbearings)
+                
+                ## loop again without incrementing t; why we're not using for
+                tryagain <- TRUE
+              }
+              ## Just fall through to the next group
+              break
+            } else {
+              closeenough <- TRUE
+            }
+          }
+        }
+        if(closeenough) {
+          tracklist[[v]] <- c(tracklist[[v]], t)
+          found <- TRUE
+          break
+        }
       }
       if(found) break;
     }
-    if(point) {
-      show(paste(mindist, closest))
-      if(mindist < maxtrackdist)
-        tracklist[[closest]] <- c(tracklist[[closest]], t)
-      else
-        loosepoints <- c(loosepoints, t)
-    } else if(!tryagain && !found) {
+    if(!tryagain && !found) {
       if(nrow(newtracks[[t]]) >= 2)
         tracklist[[length(tracklist)+1]] <- c(t)
       else
@@ -439,7 +430,20 @@ consolidateTracks <- function(tracks) {
     if(!tryagain)
       t <- t + 1
   }
-  ret <- list(tracklist=tracklist, tracks=newtracks, loosepoints=loosepoints)
+
+  trackforpoints <- integer(0)
+  if(length(newpoints)) {
+    show('Finding closest tracks for points')
+    show(newpoints)
+    trackforpoints <- sapply(newpoints, findClosestTrackToPoint, newtracks,
+                             tracklist)
+    show(trackforpoints)
+    
+    loosepoints <- c(loosepoints, newpoints[trackforpoints == 0])
+  }
+
+  ret <- list(tracklist=tracklist, trackforpoints=trackforpoints,
+              tracks=newtracks, points=newpoints, loosepoints=loosepoints)
   ret
   ##tracklist
 }
