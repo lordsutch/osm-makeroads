@@ -22,9 +22,9 @@ savefile <- "US41-Hampton-Barnesville.Rdata"
 
 ## Set the bounding box here.
 left <- -84.311
+top <- 33.380
 right <- -84.137
 bottom <- 33.023
-top <- 33.380
 
 ## What angle to split tracks at (degrees) - splits merged tracks
 splitangle <- 90
