@@ -312,13 +312,13 @@ consolidateTracks <- function(tracks) {
       else
         separation <- maxseparation
         
-      for(v in 1:length(tracklist)) {
+      for(v in seq_along(tracklist)) {
         if(tryagain)
           break
         closeenough <- FALSE
 
         show(paste('Testing', t, 'against group', v))
-        for(st in 1:length(tracklist[[v]])) {
+        for(st in seq_along(tracklist[[v]])) {
           comparetrack <- tracklist[[v]][st]
           if(nrow(newtracks[[comparetrack]]) < 2) {
             closeenough <- TRUE
@@ -375,7 +375,7 @@ consolidateTracks <- function(tracks) {
                 j <- 1
                 show(runs)
                 track <- newtracks[[t]]
-                for(i in 1:length(runs$lengths)) {
+                for(i in seq_along(runs$lengths)) {
                   ##show(i)
                   ##show(runs$lengths[i])
                   trackseg <- track[j:(j+runs$lengths[i]-1),]
