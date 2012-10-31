@@ -30,6 +30,9 @@ used to construct it.
 To-Do
 =====
 
+* Optimize search algorithm to avoid comparing intensively comparing
+  data from across the map (e.g. first pass to determine bbox of each
+  track before we bother to intensively match).
 * Take advantage of parallelism (investigate R multicore?).
 * Memory usage improvements.
 

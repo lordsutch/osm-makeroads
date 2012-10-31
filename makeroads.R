@@ -306,7 +306,7 @@ fuzzyRLE <- function(x) {
       nvalues <- c(nvalues, res$values[(pos+2):length(res$values)])
       nlengths <- c(nlengths, res$lengths[(pos+2):length(res$lengths)])
     }
-    res <- list(values=nvalues, lengths=nlengths)
+    res <- structure(list(values=nvalues, lengths=nlengths), class='rle')
     ##show(res)
   }
   res
@@ -426,7 +426,7 @@ consolidateTracks <- function(tracks) {
                 newpoints <- c(newpoints, points)
 
                 if(t < length(newtracks))
-                  fartracks <- c(fartracks, newtracks[(t+1):length(newtracks)])
+                  fartracks <- c(newtracks[(t+1):length(newtracks)], fartracks)
 
                 fartracks <- sortTracks(fartracks)
                 newtracks <- c(newtracks[1:(t-1)], closetracks, fartracks)
@@ -442,6 +442,12 @@ consolidateTracks <- function(tracks) {
 
                 ## loop again without incrementing t; why we're not using for
                 tryagain <- TRUE
+                break
+              } else {
+                show("No overlap; moving on to next group.")
+                closeenough <- FALSE
+                tryagain <- FALSE
+                found <- FALSE
                 break
               }
             } else {
