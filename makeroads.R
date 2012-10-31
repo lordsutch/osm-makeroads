@@ -396,12 +396,11 @@ consolidateTracks <- function(tracks) {
                 closeenough <- FALSE
                 newpoints <- c(newpoints, points)
 
-                ftracks <- c(closetracks, fartracks)
                 if(t < length(newtracks))
-                  ftracks <- c(ftracks, newtracks[(t+1):length(newtracks)])
+                  fartracks <- c(fartracks, newtracks[(t+1):length(newtracks)])
 
-                ftracks <- sortTracks(ftracks)
-                newtracks <- c(newtracks[1:(t-1)], ftracks)
+                fartracks <- sortTracks(fartracks)
+                newtracks <- c(newtracks[1:(t-1)], closetracks, fartracks)
                 bearings <- sapply(newtracks, calcbearings)
                 
                 ## loop again without incrementing t; why we're not using for
