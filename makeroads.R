@@ -402,6 +402,14 @@ consolidateTracks <- function(tracks) {
                 fartracks <- sortTracks(fartracks)
                 newtracks <- c(newtracks[1:(t-1)], closetracks, fartracks)
                 bearings <- sapply(newtracks, calcbearings)
+
+                if(length(closetracks)) {
+                  tracklist[[v]] <- c(tracklist[[v]], t:t+length(closetracks)-1)
+                  t <- t+length(closetracks)
+                  tryagain <- TRUE
+                  found <- TRUE
+                  break
+                }
                 
                 ## loop again without incrementing t; why we're not using for
                 tryagain <- TRUE
