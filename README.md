@@ -15,7 +15,7 @@ To get started using Debian unstable (or presumably Ubuntu w/universe):
 
 apt-get install r-cran-maptools gpsbabel libgdal-dev gfortran libgdal-dev
 
-R -e "install.packages('princurve', 'rgdal', 'geosphere')"
+R -e "install.packages('princurve', 'rgdal', 'geosphere', dependencies=TRUE)"
 
 makeroads.R and process.R are lightly commented.  Place them in the
 same directory (and cd there), edit process.R to your liking, then use:
