@@ -7,15 +7,15 @@ tracks for roadways.
 Dependencies:
 
 * R (core)
-* R packages: princurve, rgdal, maptools, geosphere (all on CRAN)
+* R packages: princurve, rgdal, maptools, geosphere, rgeos (all on CRAN)
 * gpsbabel
 * Also: libgdal and gfortran are required by some of the dependencies above.
 
 To get started using Debian unstable (or presumably Ubuntu w/universe):
 
-apt-get install r-cran-maptools gpsbabel libgdal-dev gfortran libgdal-dev
+apt-get install libgeos-dev r-cran-maptools gpsbabel libgdal-dev gfortran libgdal-dev
 
-R -e "install.packages('princurve', 'rgdal', 'geosphere', dependencies=TRUE)"
+R -e "install.packages('princurve', 'geosphere', 'rgeos', 'rgdal', dependencies=TRUE)"
 
 makeroads.R and process.R are lightly commented.  Place them in the
 same directory (and cd there), edit process.R to your liking, then use:
@@ -27,12 +27,17 @@ identified track, along with Rplots.pdf containing a visual
 representation of each estimated track along with the tracks that were
 used to construct it.
 
+Recent Changes
+==============
+
+* This version uses rgeos to ridiculously improve the time taken to
+  match the tracks.  (Data matching now takes an order of minutes
+  versus hours in previous versions.)
+
 To-Do
 =====
 
-* Optimize search algorithm to avoid comparing intensively comparing
-  data from across the map (e.g. first pass to determine bbox of each
-  track before we bother to intensively match).
+* Use local principal curves (R LPCM package).
 * Take advantage of parallelism (investigate R multicore?).
 * Memory usage improvements.
 
