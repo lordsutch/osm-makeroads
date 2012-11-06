@@ -248,7 +248,7 @@ findClosestTrackToPoint <- function(point, tracks, tracklist) {
   dists <- gDistance(tracks, point, byid=TRUE)
   
   mindist <- min(dists)
-  closestTrack <- as.integer(colnames(dists)[which.min(dists)])
+  closestTrack <- which.min(dists)
   show(closestTrack)
   
   if(mindist > maxtrackdist)
