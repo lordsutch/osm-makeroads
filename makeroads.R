@@ -404,41 +404,6 @@ consolidateTracks <- function(tracks, points) {
             
             show(paste(t, 'too far away from group', v))
 
-            ## Find extremes of tracks
-            obuff <- gBuffer(ch, width=maxtrackdist)
-            ibuff <- gBuffer(ch, width=-maxtrackdist)
-            boundaryarea <- gDifference(obuff, ibuff)
-            
-            if(gCrosses(track, boundaryarea) &&
-               gCrosses(newtracks[ctrack], boundaryarea) && angle == 0) {
-              show('Trying to attach to end of an existing line')
-              ## See if we can attach this line to the end of the other one
-              xtrack <- flattenSpatialLines(
-                gLineMerge(rbind(newtracks[ctrack], track,
-                                 makeUniqueIDs=TRUE)))
-              if(length(xtrack) == 1) {
-                show('Attached')
-                otracks <- newtracks
-                if(ctrack < (t-2))
-                  newtracks <- rbind(otracks[1:(ctrack-1)], xtrack,
-                                     otracks[(ctrack+1):(t-1)],
-                                     makeUniqueIDs=TRUE)
-                else
-                  newtracks <- rbind(otracks[1:(ctrack-1)], xtrack,
-                                   makeUniqueIDs=TRUE)
-                
-                if(t < length(otracks))
-                  newtracks <- rbind(newtracks,
-                                     otracks[(t+1):length(otracks)],
-                                     makeUniqueIDs=TRUE)
-                
-                tryagain <- TRUE
-                closeenough <- FALSE
-                found <- TRUE
-                break
-              }
-            }
-
             insidepart <- flattenSpatialLines(insidepart)
             outsidepart <- flattenSpatialLines(outsidepart)
 
@@ -489,9 +454,9 @@ consolidateTracks <- function(tracks, points) {
               ntlist <- t:(t+length(keepinside)-1)
               show(ntlist)
               tracklist[[v]] <- c(tracklist[[v]], ntlist)
-              t <- t+length(ntlist)
+              t <- t+length(ntlist)-1
               show(t)
-              tryagain <- TRUE
+              tryagain <- FALSE
               found <- TRUE
               closeenough <- FALSE
               break
@@ -538,15 +503,20 @@ consolidateTracks <- function(tracks, points) {
     show(t)
   }
 
+  points <- rbind(points, SpatialPoints(coordinatesSL(newtracks),
+                                        proj4string=CRS(proj)))
+  
   trackforpoints <- integer(0)
   if(length(points)) {
     show('Finding closest tracks for points')
     trackforpoints <- integer(length(points))
     for(i in seq_along(points)) {
-      trackforpoints[i] <- findClosestTrackToPoint(points[i], newtracks, tracklist)
+      trackforpoints[[i]] <- findClosestTrackToPoint(points[i], newtracks, tracklist)
     }
 
-    loosepoints <- c(loosepoints, points[trackforpoints == 0])
+    loosepoints <- points[trackforpoints == 0]
+  } else {
+    loosepoints <- NULL
   }
 
   ret <- list(tracklist=tracklist, trackforpoints=trackforpoints,
