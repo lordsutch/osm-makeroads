@@ -66,7 +66,7 @@ parseGPXfile <- function(filename) {
         if(nrow(segpoints) > 1) {
           linelist <- c(linelist, Line(segpoints))
         } else {
-          lpoints <- rbind(points, segpoints)
+          points <- rbind(points, segpoints)
         }
       }
       
@@ -105,7 +105,9 @@ fetchGPXpage <- function(left, bottom, right, top, page=0) {
 
 getOSMtracks <- function(left, bottom, right, top) {
   page <- 0
-  tracks <- c()
+  tracks <- NULL
+  points <- NULL
+  
   if(right < left) {
     temp <- right
     right <- left
@@ -121,34 +123,49 @@ getOSMtracks <- function(left, bottom, right, top) {
     converted <- fetchGPXpage(left, bottom, right, top, page)
 
     if(!is.null(converted)) {
-      if(!is.null(converted$tracks))
-        tracks <- rbind(tracks, converted$tracks)
-      if(!is.null(converted$points))
-        points <- rbind(points, converted$points)
+      if(!is.null(converted$tracks)) {
+        if(!is.null(tracks))
+          tracks <- rbind(tracks, converted$tracks, makeUniqueIDs=TRUE)
+        else
+          tracks <- converted$tracks
+      }
+      if(!is.null(converted$points)) {
+        if(!is.null(points))
+          points <- rbind(points, converted$points)
+        else
+          points <- converted$points
+      }
       page <- page+1
     } else {
       break
     }
   }
-  tracks
+  list(tracks=tracks, points=points)
 }
 
 ## Open GPX files directly (bypassing API download step)
 getOSMtracksFiles <- function(...) {
   filenames <- list(...)
   tracks <- NULL
+  points <- NULL
   for(filename in filenames) {
     converted <- parseGPXfile(filename)
     if(!is.null(converted)) {
-      if(is.null(tracks))
-        tracks <- converted
-      else
-        tracks <- rbind(tracks, converted)
+      if(is.null(tracks)) {
+        tracks <- converted$tracks
+      } else {
+        tracks <- rbind(tracks, converted$tracks, makeUniqueIDs=TRUE)
+      }
+      if(is.null(points)) {
+        points <- converted$points
+      } else {
+        points <- rbind(points, converted$points)
+      }
     } else {
       break
     }
   }
-  tracks
+  list(tracks=tracks, points=points)
 }
 
 ## Split tracks by direction threshold
