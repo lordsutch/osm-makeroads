@@ -23,7 +23,7 @@ library(princurve)
 
 parseGPXfile <- function(filename, tracksfrompoints=FALSE) {
   timesep <- 60  ## Split if points are more than 'timesep' seconds apart
-  distsep <- 100 ## Only make tracks if points less than this distance apart
+  distsep <- 50  ## Only make tracks if points less than this distance apart
 
   converted <- try(readOGR(filename, 'track_points'), TRUE)
 
@@ -603,13 +603,15 @@ fitpcurve <- function(track, projection) {
   bandwidth <- round(min(0.1, 30/olen), 3)
   show(paste('Fitting curve with', olen, 'points; bandwidth',
              bandwidth))
-  curve <- principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=maxit,
+  curve <- principal.curve(as.matrix(track), trace=T, f=bandwidth, maxit=50,
                            thresh=1/3600,
-                           delta=delta, iter=1, smoother='lowess')
+                           delta=1, iter=1, smoother='lowess')
 
   ## Screen out outliers and reestimate curve
   ## Really should use weights...
-  d <- sdistances(curve, track, projection)
+  str(curve)
+  
+  d <- sdistances(curve$s[curve$tag,], track, projection)
   show(d)
   track <- track[-(d >= 4),]
   if(nrow(track) > 0 && nrow(track) < olen) {
@@ -618,12 +620,12 @@ fitpcurve <- function(track, projection) {
     curve <- principal.curve(as.matrix(track), ## start=curve$s[-(d>=4),],
                              trace=T, f=bandwidth,
                              thresh=1/3600,
-                             maxit=maxit,
-                             delta=delta, iter=1, smoother='lowess')
+                             maxit=50,
+                             delta=1, iter=1, smoother='lowess')
   } else {
     show('Empty refit?')
   }
-  curve[curve$tag,]
+  curve$s[curve$tag,]
 }
 
 ## Alternative using local principal curves algorithm. At present,
