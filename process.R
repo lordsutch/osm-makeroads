@@ -14,10 +14,22 @@
 ## You may freely use, redistribute, and modify this software under the
 ## terms of the GNU General Public License, version 2 or later.
 
-## Filename to process
-loadfile <- "logatec_region.gpx"
+## Filename to process; set to NULL to download the bounding box specified,
+## or set to a filename (bounding box will be ignored).
 
-fileprefix <- "logatec"
+##loadfile <- "logatec_region.gpx"
+loadfile <- NULL
+
+## Bounding box (used only if loadfile is NULL)
+
+left <- -83.773
+bottom <- 32.830
+right <- -83.378
+top <- 33.032
+
+## prefix for save files
+
+fileprefix <- "macongray"
 
 savefile <- paste(fileprefix, "Rdata", sep='.')
 
@@ -25,7 +37,7 @@ savefile <- paste(fileprefix, "Rdata", sep='.')
 splitangle <- 135
 
 ## How close the angles need to be for ways to be "similar" enough to compare
-similarangle <- 60
+similarangle <- 90
 
 ## Max distance similar tracks can be apart (m) somewhere
 ## Realistically the same road usually gets within 1 meter at least once...
@@ -37,7 +49,7 @@ maxseparation <- 20
 
 ## How much an opposite-angle track can be off before we reject it
 ## should be much smaller than above, since we need to account for medians
-## in North America, 20m (60 ft) is reasonable; if your country typically has
+## in North America, ~20m (60 ft) is reasonable; if your country typically has
 ## narrow medians, needs to be smaller.
 maxoppositeseparation <- 15
 
@@ -54,19 +66,30 @@ splitdistance <- 30
 # Minimum track length before we turn it into a point
 mintracklen <- 10
 
-## How close to fit
-delta <- 1/50000
-maxit <- 50
+## Maximum point distance
+maxpointdist <- 20
 
+## If TRUE, connect close points w/o timestamps as tracks
+## Useful for non-trackable tracks in OSM data
+## If you have timestamps on all your tracks, set to FALSE
+closetracks <- TRUE
+
+## if TRUE, don't erase temporaries
 debug <- TRUE
 
 ## Below here, there be dragons.... actual code follows
 
 ## Bring in the generic code.  Some of this code should be moved there
 ## eventually.
+
 source('makeroads.R')
 
-ret <- getOSMtracksFiles(loadfile)
+if(!is.null(loadfile)) {
+  ret <- getOSMtracksFiles(loadfile)
+} else {
+  ret <- getOSMtracks(left, bottom, right, top)
+}
+
 tracks <- ret$tracks
 points <- ret$points
 
@@ -76,21 +99,24 @@ maxlat <- bounds['y','max']
 minlon <- bounds['x','min']
 maxlon <- bounds['x','max']
 
+## Project to the local UTM zone
 UTMzone <- trunc((180+mean(minlon,maxlon))/6)+1
 projection <- paste("+proj=utm +datum=WGS84 +zone=", UTMzone, sep="")
-if(maxlon < 0)
+if(maxlat < 0)
   projection <- paste(projection, '+south')
 
-# Project tracks to local UTM zone
 ptracks <- spTransform(tracks, CRS(projection))
 ppoints <- spTransform(points, CRS(projection))
 
 ## Put our original points in the point field
 ppoints <- rbind(ppoints, SpatialPoints(coordinatesSL(ptracks),
                                         proj4string=CRS(projection)))
-## Simplify the tracks using Douglas-Peucker to reduce overnoding
+
+## Simplify the tracks using Douglas-Peucker to reduce overnoding;
+## parameter probably should be tunable (it's in projected meters)
 ptracks <- gSimplify(ptracks, 3, topologyPreserve=TRUE)
 
+##source('makeroads.R')
 ret <- splitTracksAngle(ptracks, splitangle)
 stracks <- ret$tracks
 if(!is.null(ret$points)) {
@@ -105,7 +131,11 @@ ftracks <- sortTracks(flattenSpatialLines(stracks))
 
 ## Find related tracks
 ##system.time(ret <- consolidateTracks(ftracks[-11], spoints))
+##source('makeroads.R')
+
 system.time(ret <- consolidateTracks(ftracks, spoints))
+
+##system.time(ret <- consolidateTracks(ftracks[1:2], spoints))
 
 tracklist <- ret$tracklist
 xtracks <- ret$tracks
@@ -119,8 +149,16 @@ save(tracks, points, xtracks, xpoints, tracklist, trackforpoints,
 ##load(savefile)
 
 ## Make the best fit tracks and save them as GPX files.
+source('makeroads.R')
 pbounds <- bbox(xtracks)
+
+## Test code
+p <- setupForFit(xpoints, tracklist, trackforpoints, 1)
+##s <- lpc.self.coverage(p, depth=2, pen=0)
+f <- fitpcurve(p, projection, 0.005)
+
 pdf(onefile=T, height=8, width=6)
+##for(tcount in c(1,2)) {
 for(tcount in seq_along(tracklist)) {
   group <- tracklist[[tcount]]
   plot(xtracks, col='gray50', xlim=pbounds['x',], ylim=pbounds['y',])
@@ -142,12 +180,10 @@ for(tcount in seq_along(tracklist)) {
   ptracks <- coordinates(thesepoints)
   
   ## Fit the curve and render it onto the plot
-  f <- fitpcurve(ptracks, projection)
-
-  points <- f$s[f$tag,]
-
+  points <- fitpcurve(ptracks, projection, 10/nrow(ptracks))
   lines(points, lty=3, col=2)
 
+  ## Project back to latlong
   points <- project(points, projection, inv=TRUE)
   
   ## Export the curve as a series of points in a CSV file, dropping
@@ -170,8 +206,9 @@ for(tcount in seq_along(tracklist)) {
   csvname <- tempfile(fileext='.csv')
   gpxname <- paste(fname, 'gpx', sep='.')
 
-  write.csv(coordinates(spTransform(thesepoints, CRS("+proj=latlong"))),
-            file=csvname)
+  points <- coordinates(spTransform(thesepoints, CRS("+proj=latlong")))
+  points <- data.frame(lon=points[,1], lat=points[,2])
+  write.csv(points, file=csvname)
 
   gpsbabel.pointsout(csvname, gpxname)
   if(!debug) unlink(csvname)
