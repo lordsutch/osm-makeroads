@@ -41,7 +41,7 @@ parseGPXfile <- function(filename, tracksfrompoints=FALSE) {
     linelist <- NULL
     npoints <- NULL
     
-    for(j in seq_int(nrow(points)-1)) {
+    for(j in seq_len(nrow(points)-1)) {
       dist <- distHaversine(points[j,], points[j+1,])
       if(dist > distsep) {
         seg <- points[start:j,,drop=FALSE]
