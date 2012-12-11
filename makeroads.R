@@ -36,6 +36,7 @@ parseGPXfile <- function(filename, tracksfrompoints=FALSE) {
   lines <- NULL
 
   ## Try to assemble anonymized points into lines
+  linenum <- 1
   if(tracksfrompoints && !is.null(points) && nrow(points) >= 2) {
     start <- 1
     linelist <- NULL
@@ -55,12 +56,12 @@ parseGPXfile <- function(filename, tracksfrompoints=FALSE) {
     }
     
     if(!is.null(linelist)) {
-      lines <- c(lines, Lines(linelist, i))
+      lines <- c(lines, Lines(linelist, linenum))
+      linenum <- linenum+1
     }
     points <- npoints
   }
   
-  i <- 1
   alltracks <- converted[trackrows,]
   for(tnum in unique(alltracks$track_fid)) {
     thistrack <- alltracks[alltracks$track_fid == tnum,]
@@ -97,8 +98,8 @@ parseGPXfile <- function(filename, tracksfrompoints=FALSE) {
       }
       
       if(!is.null(linelist)) {
-        lines <- c(lines, Lines(linelist, i))
-        i <- i+1
+        lines <- c(lines, Lines(linelist, linenum))
+        linenum <- linenum+1
       }
     }
   }
@@ -106,6 +107,7 @@ parseGPXfile <- function(filename, tracksfrompoints=FALSE) {
   tracks <- NULL
   spoints <- NULL
 
+  str(lines)
   str(points)
   
   if(!is.null(lines))
