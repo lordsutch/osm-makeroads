@@ -46,3 +46,4 @@ Thanks
 
 * A few problems with the instructions were pointed out by malenki:
   http://www.openstreetmap.org/user/malenki/diary/17976
+* Instructions improved thanks to Valdas Kondrotas.
