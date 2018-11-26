@@ -21,6 +21,8 @@
 loadfile <- NULL
 
 ## Bounding box (used only if loadfile is NULL)
+## If loadfile is NULL, this area will be downloaded from
+## OpenStreetMap's public GPX file.
 
 left <- -83.773
 bottom <- 32.830
